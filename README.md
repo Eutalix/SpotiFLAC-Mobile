@@ -1,116 +1,46 @@
-# SpotiFLAC
+[![GitHub All Releases](https://img.shields.io/github/downloads/zarzet/SpotiFLAC-Android/total?style=for-the-badge)](https://github.com/zarzet/SpotiFLAC-Android/releases)
 
-Download Spotify tracks in FLAC quality from Tidal, Qobuz & Amazon Music.
+![SpotiFLAC](icon.png)
 
-![Android Build](https://github.com/zarzet/SpotiFLAC-Android/actions/workflows/android-build.yml/badge.svg)
-![iOS Build](https://github.com/zarzet/SpotiFLAC-Android/actions/workflows/ios-build.yml/badge.svg)
+<div align="center">
+
+Get Spotify tracks in true FLAC from Tidal, Qobuz & Amazon Music — no account required.
+
+![Android](https://img.shields.io/badge/Android-7.0%2B-3DDC84?style=for-the-badge&logo=android&logoColor=white)
+![iOS](https://img.shields.io/badge/iOS-14.0%2B-000000?style=for-the-badge&logo=apple&logoColor=white)
+
+</div>
+
+### [Download](https://github.com/zarzet/SpotiFLAC-Android/releases)
 
 ## Features
 
 - 🔍 Search Spotify tracks, albums, and playlists
-- 📥 Download in FLAC quality from multiple sources (Tidal, Qobuz, Amazon Music)
+- 📥 Download in FLAC quality from multiple sources
 - 🔄 Automatic fallback to available services
 - 🎵 Embedded metadata and cover art
 - 📝 Lyrics support (synced and plain)
 - 🎨 Material 3 Expressive UI with dynamic colors
-- 📱 Cross-platform: Android & iOS
 
-## Download
+## Screenshot
 
-### Latest Release
-Download the latest version from [Releases](https://github.com/zarzet/SpotiFLAC-Android/releases)
+<!-- Add your screenshot here -->
+<!-- ![Screenshot](screenshot.png) -->
 
-- **Android**: Download `SpotiFLAC-vX.X.X-android.apk`
-- **iOS**: Download `SpotiFLAC-vX.X.X-ios-unsigned.ipa` (requires sideloading)
+## Related Project
 
-### Requirements
-
-**Android**
-- Android 7.0 (API 24) or higher
-- Storage permission for saving music files
-
-**iOS**
-- iOS 14.0 or higher
-- Sideloading tool (AltStore, Sideloadly, etc.)
-
-## Building from Source
-
-### Prerequisites
-- Flutter 3.24.0 or higher
-- Go 1.21 or higher
-- gomobile (`go install golang.org/x/mobile/cmd/gomobile@latest`)
-
-### Android Build
-
-```bash
-# Build Go backend
-cd go_backend
-gomobile bind -target=android -androidapi 24 -o ../android/app/libs/gobackend.aar .
-cd ..
-
-# Build APK
-flutter build apk --release
-```
-
-### iOS Build
-
-#### Option 1: Using GitHub Actions (Recommended - No Mac Required)
-Push to the repository and GitHub Actions will automatically build the iOS app.
-Download the unsigned IPA from the Actions artifacts.
-
-#### Option 2: Local Build (Requires macOS)
-
-```bash
-# Build Go backend for iOS
-cd go_backend
-gomobile bind -target=ios -o ../ios/Frameworks/Gobackend.xcframework .
-cd ..
-
-# Build iOS (unsigned)
-flutter build ios --release --no-codesign
-```
-
-## Project Structure
-
-```
-SpotiFLAC-Android/
-├── lib/                    # Flutter/Dart code
-│   ├── models/             # Data models
-│   ├── providers/          # Riverpod state management
-│   ├── screens/            # UI screens
-│   ├── services/           # Platform bridge & FFmpeg
-│   └── theme/              # Material 3 theming
-├── go_backend/             # Go backend (Tidal, Qobuz, Amazon APIs)
-├── android/                # Android platform code
-├── ios/                    # iOS platform code
-└── .github/workflows/      # CI/CD workflows
-```
-
-## Creating a Release
-
-Releases are automated via GitHub Actions. To create a new release:
-
-1. Create and push a tag:
-   ```bash
-   git tag v1.0.0
-   git push origin v1.0.0
-   ```
-
-2. GitHub Actions will automatically:
-   - Build Android APK
-   - Build iOS IPA (unsigned)
-   - Create a GitHub Release with both artifacts
-
-## Known Limitations
-
-- iOS IPA is unsigned and requires sideloading
-- TestFlight distribution requires Apple Developer account ($99/year)
-- Some streaming services may have regional restrictions
-
-## License
-
-Private project - not for public distribution.
+### [SpotiFLAC (Desktop)](https://github.com/afkarxyz/SpotiFLAC)
+The original desktop version for Windows, macOS, and Linux.
 
 ## Disclaimer
 
-This project is for educational purposes only. Please respect copyright laws and the terms of service of streaming platforms.
+This project is for **educational and private use only**. The developer does not condone or encourage copyright infringement.
+
+**SpotiFLAC** is a third-party tool and is not affiliated with, endorsed by, or connected to Spotify, Tidal, Qobuz, Amazon Music, or any other streaming service.
+
+You are solely responsible for:
+1. Ensuring your use of this software complies with your local laws.
+2. Reading and adhering to the Terms of Service of the respective platforms.
+3. Any legal consequences resulting from the misuse of this tool.
+
+The software is provided "as is", without warranty of any kind. The author assumes no liability for any bans, damages, or legal issues arising from its use.
