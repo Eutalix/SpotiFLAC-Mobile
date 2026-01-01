@@ -1,5 +1,55 @@
 # Changelog
 
+## [1.2.0] - 2026-01-02
+
+### Added
+- **Track Metadata Screen**: New detailed metadata view when tapping on downloaded tracks
+  - Material Expressive 3 design with cover art header and gradient
+  - Hero animation from list to detail view
+  - Displays: track name, artist, album artist, album, track number, disc number, duration, release date, ISRC, Spotify ID, quality, service, download date
+  - File info: format (FLAC/M4A), file size, quality badge, service badge with colors
+  - Tap to copy ISRC and Spotify ID
+  - "Open in Spotify" button to open track in Spotify app/browser
+  - File path display with copy functionality
+  - Play and Delete action buttons
+- **Hi-Res Lossless MAX**: New highest quality option for maximum audio fidelity
+
+### Fixed
+- **Hi-Res Quality Bug**: Fixed issue where Hi-Res downloads were stuck at Lossless quality
+  - Users on previous versions are recommended to upgrade to get proper Hi-Res downloads
+- **Settings Navigation Bug**: Fixed issue where changing settings (like audio quality) would navigate back to Home tab
+- **Tidal Badge Color**: Fixed unreadable Tidal service badge (was too bright cyan, now darker blue)
+
+### Changed
+- **Recent Downloads**: Tapping on a track now opens metadata screen instead of playing directly
+  - Play button still available for quick playback
+- **Download History Model**: Extended with additional metadata fields (albumArtist, isrc, spotifyId, trackNumber, discNumber, duration, releaseDate, quality)
+- Removed unused `history_screen.dart` and `history_tab.dart` files
+
+## [1.1.2] - 2026-01-01
+
+### Added
+- **Update Checker**: Automatic check for new versions from GitHub releases
+  - Shows changelog in update dialog
+  - Option to disable update notifications
+- **Release Changelog**: GitHub releases now include full changelog
+
+### Changed
+- Updated version to 1.1.2
+
+## [1.1.1] - 2026-01-01
+
+### Fixed
+- **About Dialog**: Custom About dialog with cleaner layout
+- **Setup Screen**: Fixed step indicator line alignment
+- **Warning Text**: Fixed parallel downloads warning to use Material theme colors
+- **Copyright Year**: Updated to 2026
+
+### Changed
+- Removed Theme Preview from Settings
+- Added MIT License
+
+
 ## [1.1.0] - 2026-01-01
 
 ### Added
@@ -11,7 +61,6 @@
 - **History Persistence**: Download history now persists across app restarts using SharedPreferences
 - **Connection Pooling**: Shared HTTP transport to prevent TCP connection exhaustion during large batch downloads
 - **Connection Cleanup**: Automatic cleanup of idle connections every 50 downloads and at queue end
-- **GitHub & Credits Section**: Added links to SpotiFLAC Mobile and original SpotiFLAC desktop in Settings
 
 ### Fixed
 - **Download Progress Bug**: Fixed 0% → 100% jump by adding proper progress tracking for BTS format downloads

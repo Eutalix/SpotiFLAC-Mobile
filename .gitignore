@@ -7,8 +7,43 @@ Thumbs.db
 .vscode/
 *.iml
 
-# Kiro specs (optional - remove if you want to track specs)
-# .kiro/
+# Kiro specs (development only)
+.kiro/
 
-# Reference folder (if you don't want to include it)
-# referensi/
+# Reference folder (development only)
+referensi/
+
+# Development notes
+COMPARISON_PC_vs_ANDROID.md
+
+# Old spotiflac_android folder (moved to root)
+spotiflac_android/
+
+# Flutter/Dart
+.dart_tool/
+.packages
+build/
+*.lock
+!pubspec.lock
+.flutter-plugins
+.flutter-plugins-dependencies
+.metadata
+
+# Go backend build artifacts
+go_backend/*.aar
+go_backend/*.jar
+go_backend/*.exe
+go_backend/*.xcframework/
+
+# Android
+android/.gradle/
+android/app/libs/
+android/local.properties
+android/*.iml
+
+# iOS
+ios/Frameworks/
+ios/Pods/
+ios/.symlinks/
+ios/Flutter/Flutter.framework/
+ios/Flutter/Flutter.podspec
