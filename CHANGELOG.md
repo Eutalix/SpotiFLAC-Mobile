@@ -1,5 +1,29 @@
 # Changelog
 
+## [2.0.2] - 2026-01-03
+
+### Added
+- **Actual Quality Display**: Shows real audio quality (bit depth/sample rate) after download
+  - Quality badge on download history items (e.g., "24-bit", "16-bit")
+  - Full quality info in Track Metadata screen (e.g., "24-bit/96kHz")
+  - Tertiary color highlight for Hi-Res (24-bit) downloads
+- **Quality Disclaimer**: Added note in quality picker explaining that actual quality depends on track availability
+- **Instant Lyrics Loading**: Lyrics now load from embedded file first (instant) before falling back to internet fetch
+
+### Fixed
+- **Fallback Service Display**: Fixed download history showing wrong service when fallback occurs (e.g., showing "TIDAL" when actually downloaded from "QOBUZ")
+- **Open in Spotify**: Fixed "Open in Spotify" button not opening Spotify app correctly
+
+### Removed
+- **Romaji Conversion**: Removed Japanese lyrics to romaji conversion feature (Kanji not supported, results were incomplete)
+
+### Technical
+- Go backend now returns `actual_bit_depth` and `actual_sample_rate` in download response
+- Go backend now returns `service` field indicating actual service used (important for fallback)
+- Tidal API v2 response provides exact quality info
+- Qobuz uses track metadata for quality info
+- Amazon now reads quality from downloaded FLAC file (previously returned unknown)
+
 ## [2.0.1] - 2026-01-03
 
 ### Added

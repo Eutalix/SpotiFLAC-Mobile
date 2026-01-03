@@ -335,33 +335,7 @@ func (t *TidalDownloader) SearchTrackByMetadataWithISRC(trackName, artistName, s
 		queries = append(queries, trackName)
 	}
 
-	// Strategy 3: Romaji versions if Japanese detected
-	if ContainsJapanese(trackName) || ContainsJapanese(artistName) {
-		// Try romaji version of track name
-		if ContainsKana(trackName) {
-			romajiTrack := ToRomaji(trackName)
-			if romajiTrack != trackName {
-				if artistName != "" {
-					queries = append(queries, artistName+" "+romajiTrack)
-				}
-				queries = append(queries, romajiTrack)
-			}
-		}
-		// Try romaji version of artist name
-		if ContainsKana(artistName) {
-			romajiArtist := ToRomaji(artistName)
-			if romajiArtist != artistName {
-				queries = append(queries, romajiArtist+" "+trackName)
-				// Try both romaji
-				if ContainsKana(trackName) {
-					romajiTrack := ToRomaji(trackName)
-					queries = append(queries, romajiArtist+" "+romajiTrack)
-				}
-			}
-		}
-	}
-
-	// Strategy 4: Artist only as last resort
+	// Strategy 3: Artist only as last resort
 	if artistName != "" {
 		queries = append(queries, artistName)
 	}
@@ -483,11 +457,18 @@ func (t *TidalDownloader) SearchTrackByMetadata(trackName, artistName string) (*
 }
 
 
+// TidalDownloadInfo contains download URL and quality info
+type TidalDownloadInfo struct {
+	URL        string
+	BitDepth   int
+	SampleRate int
+}
+
 // getDownloadURLSequential requests download URL from APIs sequentially
 // Returns the first successful result (supports both v1 and v2 API formats)
-func getDownloadURLSequential(apis []string, trackID int64, quality string) (string, string, error) {
+func getDownloadURLSequential(apis []string, trackID int64, quality string) (string, TidalDownloadInfo, error) {
 	if len(apis) == 0 {
-		return "", "", fmt.Errorf("no APIs available")
+		return "", TidalDownloadInfo{}, fmt.Errorf("no APIs available")
 	}
 
 	client := NewHTTPClientWithTimeout(DefaultTimeout)
@@ -519,7 +500,12 @@ func getDownloadURLSequential(apis []string, trackID int64, quality string) (str
 		// Try v2 format first (object with manifest)
 		var v2Response TidalAPIResponseV2
 		if err := json.Unmarshal(body, &v2Response); err == nil && v2Response.Data.Manifest != "" {
-			return apiURL, "MANIFEST:" + v2Response.Data.Manifest, nil
+			info := TidalDownloadInfo{
+				URL:        "MANIFEST:" + v2Response.Data.Manifest,
+				BitDepth:   v2Response.Data.BitDepth,
+				SampleRate: v2Response.Data.SampleRate,
+			}
+			return apiURL, info, nil
 		}
 
 		// Fallback to v1 format (array with OriginalTrackUrl)
@@ -529,7 +515,13 @@ func getDownloadURLSequential(apis []string, trackID int64, quality string) (str
 		if err := json.Unmarshal(body, &v1Responses); err == nil {
 			for _, item := range v1Responses {
 				if item.OriginalTrackURL != "" {
-					return apiURL, item.OriginalTrackURL, nil
+					// v1 format doesn't have quality info, assume 16-bit/44.1kHz
+					info := TidalDownloadInfo{
+						URL:        item.OriginalTrackURL,
+						BitDepth:   16,
+						SampleRate: 44100,
+					}
+					return apiURL, info, nil
 				}
 			}
 		}
@@ -537,22 +529,22 @@ func getDownloadURLSequential(apis []string, trackID int64, quality string) (str
 		errors = append(errors, BuildErrorMessage(apiURL, resp.StatusCode, "no download URL or manifest in response"))
 	}
 
-	return "", "", fmt.Errorf("all %d Tidal APIs failed. Errors: %v", len(apis), errors)
+	return "", TidalDownloadInfo{}, fmt.Errorf("all %d Tidal APIs failed. Errors: %v", len(apis), errors)
 }
 
 // GetDownloadURL gets download URL for a track - tries APIs sequentially
-func (t *TidalDownloader) GetDownloadURL(trackID int64, quality string) (string, error) {
+func (t *TidalDownloader) GetDownloadURL(trackID int64, quality string) (TidalDownloadInfo, error) {
 	apis := t.GetAvailableAPIs()
 	if len(apis) == 0 {
-		return "", fmt.Errorf("no API URL configured")
+		return TidalDownloadInfo{}, fmt.Errorf("no API URL configured")
 	}
 
-	_, downloadURL, err := getDownloadURLSequential(apis, trackID, quality)
+	_, info, err := getDownloadURLSequential(apis, trackID, quality)
 	if err != nil {
-		return "", fmt.Errorf("failed to get download URL: %w", err)
+		return TidalDownloadInfo{}, fmt.Errorf("failed to get download URL: %w", err)
 	}
 
-	return downloadURL, nil
+	return info, nil
 }
 
 // parseManifest parses Tidal manifest (supports both BTS and DASH formats)
@@ -812,13 +804,20 @@ func (t *TidalDownloader) downloadFromManifest(manifestB64, outputPath, itemID s
 	return nil
 }
 
+// TidalDownloadResult contains download result with quality info
+type TidalDownloadResult struct {
+	FilePath   string
+	BitDepth   int
+	SampleRate int
+}
+
 // downloadFromTidal downloads a track using the request parameters
-func downloadFromTidal(req DownloadRequest) (string, error) {
+func downloadFromTidal(req DownloadRequest) (TidalDownloadResult, error) {
 	downloader := NewTidalDownloader()
 
 	// Check for existing file first
 	if existingFile, exists := checkISRCExistsInternal(req.OutputDir, req.ISRC); exists {
-		return "EXISTS:" + existingFile, nil
+		return TidalDownloadResult{FilePath: "EXISTS:" + existingFile}, nil
 	}
 
 	var track *TidalTrack
@@ -851,7 +850,7 @@ func downloadFromTidal(req DownloadRequest) (string, error) {
 		if err != nil {
 			errMsg = err.Error()
 		}
-		return "", fmt.Errorf("tidal search failed: %s", errMsg)
+		return TidalDownloadResult{}, fmt.Errorf("tidal search failed: %s", errMsg)
 	}
 
 	// Build filename
@@ -868,7 +867,7 @@ func downloadFromTidal(req DownloadRequest) (string, error) {
 
 	// Check if file already exists
 	if fileInfo, statErr := os.Stat(outputPath); statErr == nil && fileInfo.Size() > 0 {
-		return "EXISTS:" + outputPath, nil
+		return TidalDownloadResult{FilePath: "EXISTS:" + outputPath}, nil
 	}
 
 	// Determine quality to use (default to LOSSLESS if not specified)
@@ -879,14 +878,17 @@ func downloadFromTidal(req DownloadRequest) (string, error) {
 	fmt.Printf("[Tidal] Using quality: %s\n", quality)
 
 	// Get download URL using parallel API requests
-	downloadURL, err := downloader.GetDownloadURL(track.ID, quality)
+	downloadInfo, err := downloader.GetDownloadURL(track.ID, quality)
 	if err != nil {
-		return "", fmt.Errorf("failed to get download URL: %w", err)
+		return TidalDownloadResult{}, fmt.Errorf("failed to get download URL: %w", err)
 	}
 
+	// Log actual quality received
+	fmt.Printf("[Tidal] Actual quality: %d-bit/%dHz\n", downloadInfo.BitDepth, downloadInfo.SampleRate)
+
 	// Download file with item ID for progress tracking
-	if err := downloader.DownloadFile(downloadURL, outputPath, req.ItemID); err != nil {
-		return "", fmt.Errorf("download failed: %w", err)
+	if err := downloader.DownloadFile(downloadInfo.URL, outputPath, req.ItemID); err != nil {
+		return TidalDownloadResult{}, fmt.Errorf("download failed: %w", err)
 	}
 
 	// Set progress to 100% and status to finalizing (before embedding)
@@ -906,7 +908,7 @@ func downloadFromTidal(req DownloadRequest) (string, error) {
 		fmt.Printf("[Tidal] File saved as M4A (DASH stream): %s\n", actualOutputPath)
 	} else if _, err := os.Stat(outputPath); err != nil {
 		// Neither FLAC nor M4A exists
-		return "", fmt.Errorf("download completed but file not found at %s or %s", outputPath, m4aPath)
+		return TidalDownloadResult{}, fmt.Errorf("download completed but file not found at %s or %s", outputPath, m4aPath)
 	}
 
 	// Embed metadata
@@ -952,17 +954,6 @@ func downloadFromTidal(req DownloadRequest) (string, error) {
 				fmt.Println("[Tidal] No lyrics found for this track")
 			} else {
 				fmt.Printf("[Tidal] Lyrics found (%d lines), embedding...\n", len(lyrics.Lines))
-				
-				// Convert Japanese lyrics to romaji if enabled
-				if req.ConvertLyricsToRomaji {
-					for i := range lyrics.Lines {
-						if ContainsKana(lyrics.Lines[i].Words) {
-							lyrics.Lines[i].Words = ToRomaji(lyrics.Lines[i].Words)
-						}
-					}
-					fmt.Println("[Tidal] Converted Japanese lyrics to romaji")
-				}
-				
 				lrcContent := convertToLRC(lyrics)
 				if embedErr := EmbedLyrics(actualOutputPath, lrcContent); embedErr != nil {
 					fmt.Printf("[Tidal] Warning: failed to embed lyrics: %v\n", embedErr)
@@ -975,5 +966,9 @@ func downloadFromTidal(req DownloadRequest) (string, error) {
 		fmt.Printf("[Tidal] Skipping metadata embed for M4A file (will be handled after conversion): %s\n", actualOutputPath)
 	}
 
-	return actualOutputPath, nil
+	return TidalDownloadResult{
+		FilePath:   actualOutputPath,
+		BitDepth:   downloadInfo.BitDepth,
+		SampleRate: downloadInfo.SampleRate,
+	}, nil
 }

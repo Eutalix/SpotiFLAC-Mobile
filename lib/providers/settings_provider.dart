@@ -89,11 +89,6 @@ class SettingsNotifier extends Notifier<AppSettings> {
     _saveSettings();
   }
 
-  void setConvertLyricsToRomaji(bool enabled) {
-    state = state.copyWith(convertLyricsToRomaji: enabled);
-    _saveSettings();
-  }
-
   void setHistoryViewMode(String mode) {
     state = state.copyWith(historyViewMode: mode);
     _saveSettings();

@@ -254,38 +254,45 @@ func (a *AmazonDownloader) DownloadFile(downloadURL, outputPath, itemID string) 
 	return nil
 }
 
+// AmazonDownloadResult contains download result with quality info
+type AmazonDownloadResult struct {
+	FilePath   string
+	BitDepth   int
+	SampleRate int
+}
+
 // downloadFromAmazon downloads a track using the request parameters
 // Uses DoubleDouble service (same as PC version)
-func downloadFromAmazon(req DownloadRequest) (string, error) {
+func downloadFromAmazon(req DownloadRequest) (AmazonDownloadResult, error) {
 	downloader := NewAmazonDownloader()
 
 	// Check for existing file first
 	if existingFile, exists := checkISRCExistsInternal(req.OutputDir, req.ISRC); exists {
-		return "EXISTS:" + existingFile, nil
+		return AmazonDownloadResult{FilePath: "EXISTS:" + existingFile}, nil
 	}
 
 	// Get Amazon URL from SongLink
 	songlink := NewSongLinkClient()
 	availability, err := songlink.CheckTrackAvailability(req.SpotifyID, req.ISRC)
 	if err != nil {
-		return "", fmt.Errorf("failed to check Amazon availability via SongLink: %w", err)
+		return AmazonDownloadResult{}, fmt.Errorf("failed to check Amazon availability via SongLink: %w", err)
 	}
 
 	if !availability.Amazon || availability.AmazonURL == "" {
-		return "", fmt.Errorf("track not available on Amazon Music (SongLink returned no Amazon URL)")
+		return AmazonDownloadResult{}, fmt.Errorf("track not available on Amazon Music (SongLink returned no Amazon URL)")
 	}
 
 	// Create output directory if needed
 	if req.OutputDir != "." {
 		if err := os.MkdirAll(req.OutputDir, 0755); err != nil {
-			return "", fmt.Errorf("failed to create output directory: %w", err)
+			return AmazonDownloadResult{}, fmt.Errorf("failed to create output directory: %w", err)
 		}
 	}
 
 	// Download using DoubleDouble service (same as PC)
 	downloadURL, trackName, artistName, err := downloader.downloadFromDoubleDoubleService(availability.AmazonURL, req.OutputDir)
 	if err != nil {
-		return "", fmt.Errorf("failed to get download URL: %w", err)
+		return AmazonDownloadResult{}, fmt.Errorf("failed to get download URL: %w", err)
 	}
 
 	// Build filename using Spotify metadata (more accurate)
@@ -302,12 +309,12 @@ func downloadFromAmazon(req DownloadRequest) (string, error) {
 
 	// Check if file already exists
 	if fileInfo, statErr := os.Stat(outputPath); statErr == nil && fileInfo.Size() > 0 {
-		return "EXISTS:" + outputPath, nil
+		return AmazonDownloadResult{FilePath: "EXISTS:" + outputPath}, nil
 	}
 
 	// Download file with item ID for progress tracking
 	if err := downloader.DownloadFile(downloadURL, outputPath, req.ItemID); err != nil {
-		return "", fmt.Errorf("download failed: %w", err)
+		return AmazonDownloadResult{}, fmt.Errorf("download failed: %w", err)
 	}
 
 	// Set progress to 100% and status to finalizing (before embedding)
@@ -363,17 +370,6 @@ func downloadFromAmazon(req DownloadRequest) (string, error) {
 			fmt.Println("[Amazon] No lyrics found for this track")
 		} else {
 			fmt.Printf("[Amazon] Lyrics found (%d lines), embedding...\n", len(lyrics.Lines))
-			
-			// Convert Japanese lyrics to romaji if enabled
-			if req.ConvertLyricsToRomaji {
-				for i := range lyrics.Lines {
-					if ContainsKana(lyrics.Lines[i].Words) {
-						lyrics.Lines[i].Words = ToRomaji(lyrics.Lines[i].Words)
-					}
-				}
-				fmt.Println("[Amazon] Converted Japanese lyrics to romaji")
-			}
-			
 			lrcContent := convertToLRC(lyrics)
 			if embedErr := EmbedLyrics(outputPath, lrcContent); embedErr != nil {
 				fmt.Printf("[Amazon] Warning: failed to embed lyrics: %v\n", embedErr)
@@ -384,5 +380,24 @@ func downloadFromAmazon(req DownloadRequest) (string, error) {
 	}
 
 	fmt.Println("[Amazon] ✓ Downloaded successfully from Amazon Music")
-	return outputPath, nil
+	
+	// Read actual quality from the downloaded FLAC file
+	// Amazon API doesn't provide quality info, but we can read it from the file itself
+	quality, err := GetAudioQuality(outputPath)
+	if err != nil {
+		fmt.Printf("[Amazon] Warning: couldn't read quality from file: %v\n", err)
+		// Return 0 to indicate unknown quality
+		return AmazonDownloadResult{
+			FilePath:   outputPath,
+			BitDepth:   0,
+			SampleRate: 0,
+		}, nil
+	}
+	
+	fmt.Printf("[Amazon] Actual quality: %d-bit/%dHz\n", quality.BitDepth, quality.SampleRate)
+	return AmazonDownloadResult{
+		FilePath:   outputPath,
+		BitDepth:   quality.BitDepth,
+		SampleRate: quality.SampleRate,
+	}, nil
 }

@@ -222,6 +222,17 @@ class _HomeTabState extends ConsumerState<HomeTab> with AutomaticKeepAliveClient
               padding: const EdgeInsets.fromLTRB(24, 16, 24, 8),
               child: Text('Select Quality', style: Theme.of(context).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.bold)),
             ),
+            // Disclaimer
+            Padding(
+              padding: const EdgeInsets.fromLTRB(24, 0, 24, 12),
+              child: Text(
+                'Actual quality depends on track availability. Hi-Res may not be available for all tracks.',
+                style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                  color: colorScheme.onSurfaceVariant,
+                  fontStyle: FontStyle.italic,
+                ),
+              ),
+            ),
             _QualityPickerOption(
               title: 'FLAC Lossless',
               subtitle: '16-bit / 44.1kHz',

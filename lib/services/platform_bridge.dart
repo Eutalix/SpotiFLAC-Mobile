@@ -60,7 +60,6 @@ class PlatformBridge {
     String quality = 'LOSSLESS',
     bool embedLyrics = true,
     bool embedMaxQualityCover = true,
-    bool convertLyricsToRomaji = false,
     int trackNumber = 1,
     int discNumber = 1,
     int totalTracks = 1,
@@ -81,7 +80,6 @@ class PlatformBridge {
       'quality': quality,
       'embed_lyrics': embedLyrics,
       'embed_max_quality_cover': embedMaxQualityCover,
-      'convert_lyrics_to_romaji': convertLyricsToRomaji,
       'track_number': trackNumber,
       'disc_number': discNumber,
       'total_tracks': totalTracks,
@@ -107,7 +105,6 @@ class PlatformBridge {
     String quality = 'LOSSLESS',
     bool embedLyrics = true,
     bool embedMaxQualityCover = true,
-    bool convertLyricsToRomaji = false,
     int trackNumber = 1,
     int discNumber = 1,
     int totalTracks = 1,
@@ -129,7 +126,6 @@ class PlatformBridge {
       'quality': quality,
       'embed_lyrics': embedLyrics,
       'embed_max_quality_cover': embedMaxQualityCover,
-      'convert_lyrics_to_romaji': convertLyricsToRomaji,
       'track_number': trackNumber,
       'disc_number': discNumber,
       'total_tracks': totalTracks,
@@ -214,15 +210,18 @@ class PlatformBridge {
   }
 
   /// Get lyrics in LRC format
+  /// First tries to extract from embedded file, then falls back to internet
   static Future<String> getLyricsLRC(
     String spotifyId,
     String trackName,
-    String artistName,
-  ) async {
+    String artistName, {
+    String? filePath,
+  }) async {
     final result = await _channel.invokeMethod('getLyricsLRC', {
       'spotify_id': spotifyId,
       'track_name': trackName,
       'artist_name': artistName,
+      'file_path': filePath ?? '',
     });
     return result as String;
   }

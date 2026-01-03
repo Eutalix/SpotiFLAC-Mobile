@@ -1007,7 +1007,6 @@ class DownloadQueueNotifier extends Notifier<DownloadQueueState> {
           releaseDate: item.track.releaseDate,
           preferredService: item.service,
           itemId: item.id, // Pass item ID for progress tracking
-          convertLyricsToRomaji: settings.convertLyricsToRomaji,
         );
       } else {
         result = await PlatformBridge.downloadTrack(
@@ -1026,7 +1025,6 @@ class DownloadQueueNotifier extends Notifier<DownloadQueueState> {
           discNumber: item.track.discNumber ?? 1,
           releaseDate: item.track.releaseDate,
           itemId: item.id, // Pass item ID for progress tracking
-          convertLyricsToRomaji: settings.convertLyricsToRomaji,
         );
       }
       
@@ -1035,6 +1033,20 @@ class DownloadQueueNotifier extends Notifier<DownloadQueueState> {
       if (result['success'] == true) {
         var filePath = result['file_path'] as String?;
         _log.i('Download success, file: $filePath');
+        
+        // Get actual quality from response (if available)
+        final actualBitDepth = result['actual_bit_depth'] as int?;
+        final actualSampleRate = result['actual_sample_rate'] as int?;
+        String actualQuality = quality; // Default to requested quality
+        
+        if (actualBitDepth != null && actualBitDepth > 0) {
+          // Format: "24-bit/96kHz" or "16-bit/44.1kHz"
+          final sampleRateKHz = actualSampleRate != null && actualSampleRate > 0 
+              ? (actualSampleRate / 1000).toStringAsFixed(actualSampleRate % 1000 == 0 ? 0 : 1)
+              : '?';
+          actualQuality = '$actualBitDepth-bit/${sampleRateKHz}kHz';
+          _log.i('Actual quality: $actualQuality');
+        }
         
         // Check if file is M4A (DASH stream from Tidal) and needs remuxing to FLAC
         if (filePath != null && filePath.endsWith('.m4a')) {
@@ -1096,7 +1108,7 @@ class DownloadQueueNotifier extends Notifier<DownloadQueueState> {
               discNumber: item.track.discNumber,
               duration: item.track.duration,
               releaseDate: item.track.releaseDate,
-              quality: quality,
+              quality: actualQuality,
             ),
           );
           

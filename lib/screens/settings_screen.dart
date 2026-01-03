@@ -392,7 +392,19 @@ class SettingsScreen extends ConsumerWidget {
         title: const Text('Select Quality'),
         content: Column(
           mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
+            // Disclaimer
+            Padding(
+              padding: const EdgeInsets.only(bottom: 12),
+              child: Text(
+                'Actual quality depends on track availability. Hi-Res may not be available for all tracks.',
+                style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                  color: colorScheme.onSurfaceVariant,
+                  fontStyle: FontStyle.italic,
+                ),
+              ),
+            ),
             _buildQualityOption(context, ref, 'LOSSLESS', 'FLAC (Lossless)', '16-bit / 44.1kHz', current, colorScheme),
             _buildQualityOption(context, ref, 'HI_RES', 'Hi-Res FLAC', '24-bit / up to 192kHz', current, colorScheme),
           ],

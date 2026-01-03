@@ -122,7 +122,6 @@ type DownloadRequest struct {
 	Quality              string `json:"quality"` // LOSSLESS, HI_RES, HI_RES_LOSSLESS
 	EmbedLyrics          bool   `json:"embed_lyrics"`
 	EmbedMaxQualityCover bool   `json:"embed_max_quality_cover"`
-	ConvertLyricsToRomaji bool  `json:"convert_lyrics_to_romaji"`
 	TrackNumber          int    `json:"track_number"`
 	DiscNumber           int    `json:"disc_number"`
 	TotalTracks          int    `json:"total_tracks"`
@@ -137,6 +136,17 @@ type DownloadResponse struct {
 	FilePath      string `json:"file_path,omitempty"`
 	Error         string `json:"error,omitempty"`
 	AlreadyExists bool   `json:"already_exists,omitempty"`
+	// Actual quality info from the source
+	ActualBitDepth   int    `json:"actual_bit_depth,omitempty"`
+	ActualSampleRate int    `json:"actual_sample_rate,omitempty"`
+	Service          string `json:"service,omitempty"` // Actual service used (for fallback)
+}
+
+// DownloadResult is a generic result type for all downloaders
+type DownloadResult struct {
+	FilePath   string
+	BitDepth   int
+	SampleRate int
 }
 
 // DownloadTrack downloads a track from the specified service
@@ -155,16 +165,40 @@ func DownloadTrack(requestJSON string) (string, error) {
 	req.AlbumArtist = strings.TrimSpace(req.AlbumArtist)
 	req.OutputDir = strings.TrimSpace(req.OutputDir)
 	
-	var filePath string
+	var result DownloadResult
 	var err error
 	
 	switch req.Service {
 	case "tidal":
-		filePath, err = downloadFromTidal(req)
+		tidalResult, tidalErr := downloadFromTidal(req)
+		if tidalErr == nil {
+			result = DownloadResult{
+				FilePath:   tidalResult.FilePath,
+				BitDepth:   tidalResult.BitDepth,
+				SampleRate: tidalResult.SampleRate,
+			}
+		}
+		err = tidalErr
 	case "qobuz":
-		filePath, err = downloadFromQobuz(req)
+		qobuzResult, qobuzErr := downloadFromQobuz(req)
+		if qobuzErr == nil {
+			result = DownloadResult{
+				FilePath:   qobuzResult.FilePath,
+				BitDepth:   qobuzResult.BitDepth,
+				SampleRate: qobuzResult.SampleRate,
+			}
+		}
+		err = qobuzErr
 	case "amazon":
-		filePath, err = downloadFromAmazon(req)
+		amazonResult, amazonErr := downloadFromAmazon(req)
+		if amazonErr == nil {
+			result = DownloadResult{
+				FilePath:   amazonResult.FilePath,
+				BitDepth:   amazonResult.BitDepth,
+				SampleRate: amazonResult.SampleRate,
+			}
+		}
+		err = amazonErr
 	default:
 		return errorResponse("Unknown service: " + req.Service)
 	}
@@ -174,21 +208,25 @@ func DownloadTrack(requestJSON string) (string, error) {
 	}
 	
 	// Check if file already exists
-	if len(filePath) > 7 && filePath[:7] == "EXISTS:" {
+	if len(result.FilePath) > 7 && result.FilePath[:7] == "EXISTS:" {
 		resp := DownloadResponse{
 			Success:       true,
 			Message:       "File already exists",
-			FilePath:      filePath[7:],
+			FilePath:      result.FilePath[7:],
 			AlreadyExists: true,
+			Service:       req.Service,
 		}
 		jsonBytes, _ := json.Marshal(resp)
 		return string(jsonBytes), nil
 	}
 	
 	resp := DownloadResponse{
-		Success:  true,
-		Message:  "Download complete",
-		FilePath: filePath,
+		Success:          true,
+		Message:          "Download complete",
+		FilePath:         result.FilePath,
+		ActualBitDepth:   result.BitDepth,
+		ActualSampleRate: result.SampleRate,
+		Service:          req.Service,
 	}
 	
 	jsonBytes, _ := json.Marshal(resp)
@@ -230,35 +268,63 @@ func DownloadWithFallback(requestJSON string) (string, error) {
 	for _, service := range services {
 		req.Service = service
 		
-		var filePath string
+		var result DownloadResult
 		var err error
 		
 		switch service {
 		case "tidal":
-			filePath, err = downloadFromTidal(req)
+			tidalResult, tidalErr := downloadFromTidal(req)
+			if tidalErr == nil {
+				result = DownloadResult{
+					FilePath:   tidalResult.FilePath,
+					BitDepth:   tidalResult.BitDepth,
+					SampleRate: tidalResult.SampleRate,
+				}
+			}
+			err = tidalErr
 		case "qobuz":
-			filePath, err = downloadFromQobuz(req)
+			qobuzResult, qobuzErr := downloadFromQobuz(req)
+			if qobuzErr == nil {
+				result = DownloadResult{
+					FilePath:   qobuzResult.FilePath,
+					BitDepth:   qobuzResult.BitDepth,
+					SampleRate: qobuzResult.SampleRate,
+				}
+			}
+			err = qobuzErr
 		case "amazon":
-			filePath, err = downloadFromAmazon(req)
+			amazonResult, amazonErr := downloadFromAmazon(req)
+			if amazonErr == nil {
+				result = DownloadResult{
+					FilePath:   amazonResult.FilePath,
+					BitDepth:   amazonResult.BitDepth,
+					SampleRate: amazonResult.SampleRate,
+				}
+			}
+			err = amazonErr
 		}
 		
 		if err == nil {
 			// Check if file already exists
-			if len(filePath) > 7 && filePath[:7] == "EXISTS:" {
+			if len(result.FilePath) > 7 && result.FilePath[:7] == "EXISTS:" {
 				resp := DownloadResponse{
 					Success:       true,
 					Message:       "File already exists",
-					FilePath:      filePath[7:],
+					FilePath:      result.FilePath[7:],
 					AlreadyExists: true,
+					Service:       service,
 				}
 				jsonBytes, _ := json.Marshal(resp)
 				return string(jsonBytes), nil
 			}
 			
 			resp := DownloadResponse{
-				Success:  true,
-				Message:  "Downloaded from " + service,
-				FilePath: filePath,
+				Success:          true,
+				Message:          "Downloaded from " + service,
+				FilePath:         result.FilePath,
+				ActualBitDepth:   result.BitDepth,
+				ActualSampleRate: result.SampleRate,
+				Service:          service,
 			}
 			jsonBytes, _ := json.Marshal(resp)
 			return string(jsonBytes), nil
@@ -367,14 +433,24 @@ func FetchLyrics(spotifyID, trackName, artistName string) (string, error) {
 }
 
 // GetLyricsLRC fetches lyrics and converts to LRC format string
-func GetLyricsLRC(spotifyID, trackName, artistName string) (string, error) {
+// First tries to extract from file, then falls back to fetching from internet
+func GetLyricsLRC(spotifyID, trackName, artistName string, filePath string) (string, error) {
+	// Try to extract from file first (much faster)
+	if filePath != "" {
+		lyrics, err := ExtractLyrics(filePath)
+		if err == nil && lyrics != "" {
+			return lyrics, nil
+		}
+	}
+
+	// Fallback to fetching from internet
 	client := NewLyricsClient()
-	lyrics, err := client.FetchLyricsAllSources(spotifyID, trackName, artistName)
+	lyricsData, err := client.FetchLyricsAllSources(spotifyID, trackName, artistName)
 	if err != nil {
 		return "", err
 	}
 
-	lrcContent := convertToLRC(lyrics)
+	lrcContent := convertToLRC(lyricsData)
 	return lrcContent, nil
 }
 
@@ -392,12 +468,6 @@ func EmbedLyricsToFile(filePath, lyrics string) (string, error) {
 
 	jsonBytes, _ := json.Marshal(resp)
 	return string(jsonBytes), nil
-}
-
-// ConvertToRomaji converts Japanese kana (Hiragana/Katakana) to romaji
-// Kanji characters are preserved as-is
-func ConvertToRomaji(text string) string {
-	return ToRomaji(text)
 }
 
 func errorResponse(msg string) (string, error) {

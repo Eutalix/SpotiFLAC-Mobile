@@ -99,23 +99,6 @@ class OptionsSettingsPage extends ConsumerWidget {
             ),
           ),
 
-          // Lyrics section
-          const SliverToBoxAdapter(child: SettingsSectionHeader(title: 'Lyrics')),
-          SliverToBoxAdapter(
-            child: SettingsGroup(
-              children: [
-                SettingsSwitchItem(
-                  icon: Icons.translate,
-                  title: 'Convert Japanese to Romaji',
-                  subtitle: 'Auto-convert Hiragana/Katakana lyrics',
-                  value: settings.convertLyricsToRomaji,
-                  onChanged: (v) => ref.read(settingsProvider.notifier).setConvertLyricsToRomaji(v),
-                  showDivider: false,
-                ),
-              ],
-            ),
-          ),
-
           // App section
           const SliverToBoxAdapter(child: SettingsSectionHeader(title: 'App')),
           SliverToBoxAdapter(

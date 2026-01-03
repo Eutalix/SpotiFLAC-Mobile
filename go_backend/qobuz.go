@@ -305,13 +305,20 @@ func (q *QobuzDownloader) DownloadFile(downloadURL, outputPath, itemID string) e
 	return err
 }
 
+// QobuzDownloadResult contains download result with quality info
+type QobuzDownloadResult struct {
+	FilePath   string
+	BitDepth   int
+	SampleRate int
+}
+
 // downloadFromQobuz downloads a track using the request parameters
-func downloadFromQobuz(req DownloadRequest) (string, error) {
+func downloadFromQobuz(req DownloadRequest) (QobuzDownloadResult, error) {
 	downloader := NewQobuzDownloader()
 
 	// Check for existing file first
 	if existingFile, exists := checkISRCExistsInternal(req.OutputDir, req.ISRC); exists {
-		return "EXISTS:" + existingFile, nil
+		return QobuzDownloadResult{FilePath: "EXISTS:" + existingFile}, nil
 	}
 
 	var track *QobuzTrack
@@ -332,7 +339,7 @@ func downloadFromQobuz(req DownloadRequest) (string, error) {
 		if err != nil {
 			errMsg = err.Error()
 		}
-		return "", fmt.Errorf("qobuz search failed: %s", errMsg)
+		return QobuzDownloadResult{}, fmt.Errorf("qobuz search failed: %s", errMsg)
 	}
 
 	// Build filename
@@ -349,7 +356,7 @@ func downloadFromQobuz(req DownloadRequest) (string, error) {
 
 	// Check if file already exists
 	if fileInfo, statErr := os.Stat(outputPath); statErr == nil && fileInfo.Size() > 0 {
-		return "EXISTS:" + outputPath, nil
+		return QobuzDownloadResult{FilePath: "EXISTS:" + outputPath}, nil
 	}
 
 	// Map quality from Tidal format to Qobuz format
@@ -366,15 +373,20 @@ func downloadFromQobuz(req DownloadRequest) (string, error) {
 	}
 	fmt.Printf("[Qobuz] Using quality: %s (mapped from %s)\n", qobuzQuality, req.Quality)
 
+	// Get actual quality from track metadata
+	actualBitDepth := track.MaximumBitDepth
+	actualSampleRate := int(track.MaximumSamplingRate * 1000) // Convert kHz to Hz
+	fmt.Printf("[Qobuz] Actual quality: %d-bit/%.1fkHz\n", actualBitDepth, track.MaximumSamplingRate)
+
 	// Get download URL using parallel API requests
 	downloadURL, err := downloader.GetDownloadURL(track.ID, qobuzQuality)
 	if err != nil {
-		return "", fmt.Errorf("failed to get download URL: %w", err)
+		return QobuzDownloadResult{}, fmt.Errorf("failed to get download URL: %w", err)
 	}
 
 	// Download file with item ID for progress tracking
 	if err := downloader.DownloadFile(downloadURL, outputPath, req.ItemID); err != nil {
-		return "", fmt.Errorf("download failed: %w", err)
+		return QobuzDownloadResult{}, fmt.Errorf("download failed: %w", err)
 	}
 
 	// Set progress to 100% and status to finalizing (before embedding)
@@ -425,17 +437,6 @@ func downloadFromQobuz(req DownloadRequest) (string, error) {
 			fmt.Println("[Qobuz] No lyrics found for this track")
 		} else {
 			fmt.Printf("[Qobuz] Lyrics found (%d lines), embedding...\n", len(lyrics.Lines))
-			
-			// Convert Japanese lyrics to romaji if enabled
-			if req.ConvertLyricsToRomaji {
-				for i := range lyrics.Lines {
-					if ContainsKana(lyrics.Lines[i].Words) {
-						lyrics.Lines[i].Words = ToRomaji(lyrics.Lines[i].Words)
-					}
-				}
-				fmt.Println("[Qobuz] Converted Japanese lyrics to romaji")
-			}
-			
 			lrcContent := convertToLRC(lyrics)
 			if embedErr := EmbedLyrics(outputPath, lrcContent); embedErr != nil {
 				fmt.Printf("[Qobuz] Warning: failed to embed lyrics: %v\n", embedErr)
@@ -445,5 +446,9 @@ func downloadFromQobuz(req DownloadRequest) (string, error) {
 		}
 	}
 
-	return outputPath, nil
+	return QobuzDownloadResult{
+		FilePath:   outputPath,
+		BitDepth:   actualBitDepth,
+		SampleRate: actualSampleRate,
+	}, nil
 }

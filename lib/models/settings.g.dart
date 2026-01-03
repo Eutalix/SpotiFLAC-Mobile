@@ -19,7 +19,6 @@ AppSettings _$AppSettingsFromJson(Map<String, dynamic> json) => AppSettings(
   checkForUpdates: json['checkForUpdates'] as bool? ?? true,
   hasSearchedBefore: json['hasSearchedBefore'] as bool? ?? false,
   folderOrganization: json['folderOrganization'] as String? ?? 'none',
-  convertLyricsToRomaji: json['convertLyricsToRomaji'] as bool? ?? false,
   historyViewMode: json['historyViewMode'] as String? ?? 'grid',
   askQualityBeforeDownload: json['askQualityBeforeDownload'] as bool? ?? true,
 );
@@ -38,7 +37,6 @@ Map<String, dynamic> _$AppSettingsToJson(AppSettings instance) =>
       'checkForUpdates': instance.checkForUpdates,
       'hasSearchedBefore': instance.hasSearchedBefore,
       'folderOrganization': instance.folderOrganization,
-      'convertLyricsToRomaji': instance.convertLyricsToRomaji,
       'historyViewMode': instance.historyViewMode,
       'askQualityBeforeDownload': instance.askQualityBeforeDownload,
     };

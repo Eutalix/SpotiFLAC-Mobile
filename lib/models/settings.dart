@@ -16,7 +16,6 @@ class AppSettings {
   final bool checkForUpdates; // Check for updates on app start
   final bool hasSearchedBefore; // Hide helper text after first search
   final String folderOrganization; // none, artist, album, artist_album
-  final bool convertLyricsToRomaji; // Convert Japanese lyrics to romaji
   final String historyViewMode; // list, grid
   final bool askQualityBeforeDownload; // Show quality picker before each download
 
@@ -33,7 +32,6 @@ class AppSettings {
     this.checkForUpdates = true, // Default: enabled
     this.hasSearchedBefore = false, // Default: show helper text
     this.folderOrganization = 'none', // Default: no folder organization
-    this.convertLyricsToRomaji = false, // Default: keep original Japanese
     this.historyViewMode = 'grid', // Default: grid view
     this.askQualityBeforeDownload = true, // Default: ask quality before download
   });
@@ -51,7 +49,6 @@ class AppSettings {
     bool? checkForUpdates,
     bool? hasSearchedBefore,
     String? folderOrganization,
-    bool? convertLyricsToRomaji,
     String? historyViewMode,
     bool? askQualityBeforeDownload,
   }) {
@@ -68,7 +65,6 @@ class AppSettings {
       checkForUpdates: checkForUpdates ?? this.checkForUpdates,
       hasSearchedBefore: hasSearchedBefore ?? this.hasSearchedBefore,
       folderOrganization: folderOrganization ?? this.folderOrganization,
-      convertLyricsToRomaji: convertLyricsToRomaji ?? this.convertLyricsToRomaji,
       historyViewMode: historyViewMode ?? this.historyViewMode,
       askQualityBeforeDownload: askQualityBeforeDownload ?? this.askQualityBeforeDownload,
     );

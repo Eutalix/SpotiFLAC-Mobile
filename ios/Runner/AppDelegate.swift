@@ -164,7 +164,8 @@ import Gobackend  // Import Go framework
             let spotifyId = args["spotify_id"] as! String
             let trackName = args["track_name"] as! String
             let artistName = args["artist_name"] as! String
-            let response = GobackendGetLyricsLRC(spotifyId, trackName, artistName, &error)
+            let filePath = args["file_path"] as? String ?? ""
+            let response = GobackendGetLyricsLRC(spotifyId, trackName, artistName, filePath, &error)
             if let error = error { throw error }
             return response
             

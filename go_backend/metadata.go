@@ -335,3 +335,92 @@ func EmbedLyrics(filePath string, lyrics string) error {
 
 	return f.Save(filePath)
 }
+
+// ExtractLyrics extracts embedded lyrics from a FLAC file
+func ExtractLyrics(filePath string) (string, error) {
+	f, err := flac.ParseFile(filePath)
+	if err != nil {
+		return "", fmt.Errorf("failed to parse FLAC file: %w", err)
+	}
+
+	for _, meta := range f.Meta {
+		if meta.Type == flac.VorbisComment {
+			cmt, err := flacvorbis.ParseFromMetaDataBlock(*meta)
+			if err != nil {
+				continue
+			}
+			
+			// Try LYRICS tag first
+			lyrics, err := cmt.Get("LYRICS")
+			if err == nil && len(lyrics) > 0 && lyrics[0] != "" {
+				return lyrics[0], nil
+			}
+			
+			// Fallback to UNSYNCEDLYRICS
+			lyrics, err = cmt.Get("UNSYNCEDLYRICS")
+			if err == nil && len(lyrics) > 0 && lyrics[0] != "" {
+				return lyrics[0], nil
+			}
+		}
+	}
+
+	return "", fmt.Errorf("no lyrics found in file")
+}
+
+// AudioQuality represents audio quality info from a FLAC file
+type AudioQuality struct {
+	BitDepth   int `json:"bit_depth"`
+	SampleRate int `json:"sample_rate"`
+}
+
+// GetAudioQuality reads bit depth and sample rate from a FLAC file's StreamInfo block
+// FLAC StreamInfo is always the first metadata block after the 4-byte "fLaC" marker
+func GetAudioQuality(filePath string) (AudioQuality, error) {
+	file, err := os.Open(filePath)
+	if err != nil {
+		return AudioQuality{}, fmt.Errorf("failed to open file: %w", err)
+	}
+	defer file.Close()
+
+	// Read FLAC marker (4 bytes: "fLaC")
+	marker := make([]byte, 4)
+	if _, err := file.Read(marker); err != nil {
+		return AudioQuality{}, fmt.Errorf("failed to read marker: %w", err)
+	}
+	if string(marker) != "fLaC" {
+		return AudioQuality{}, fmt.Errorf("not a FLAC file")
+	}
+
+	// Read metadata block header (4 bytes)
+	// Byte 0: bit 7 = last block flag, bits 0-6 = block type (0 = STREAMINFO)
+	// Bytes 1-3: block length (24-bit big-endian)
+	header := make([]byte, 4)
+	if _, err := file.Read(header); err != nil {
+		return AudioQuality{}, fmt.Errorf("failed to read header: %w", err)
+	}
+
+	blockType := header[0] & 0x7F
+	if blockType != 0 {
+		return AudioQuality{}, fmt.Errorf("first block is not STREAMINFO")
+	}
+
+	// Read STREAMINFO block (34 bytes minimum)
+	// Bytes 10-13 contain sample rate (20 bits), channels (3 bits), bits per sample (5 bits)
+	streamInfo := make([]byte, 34)
+	if _, err := file.Read(streamInfo); err != nil {
+		return AudioQuality{}, fmt.Errorf("failed to read STREAMINFO: %w", err)
+	}
+
+	// Parse sample rate (20 bits starting at byte 10)
+	// Bytes 10-12: [SSSS SSSS] [SSSS SSSS] [SSSS CCCC] where S=sample rate, C=channels
+	sampleRate := (int(streamInfo[10]) << 12) | (int(streamInfo[11]) << 4) | (int(streamInfo[12]) >> 4)
+
+	// Parse bits per sample (5 bits)
+	// Byte 12 bits 0-3 and byte 13 bit 7: [.... BBBB] [B...] where B=bits per sample - 1
+	bitsPerSample := ((int(streamInfo[12]) & 0x01) << 4) | (int(streamInfo[13]) >> 4) + 1
+
+	return AudioQuality{
+		BitDepth:   bitsPerSample,
+		SampleRate: sampleRate,
+	}, nil
+}

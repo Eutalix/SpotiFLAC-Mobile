@@ -157,8 +157,9 @@ class MainActivity: FlutterActivity() {
                             val spotifyId = call.argument<String>("spotify_id") ?: ""
                             val trackName = call.argument<String>("track_name") ?: ""
                             val artistName = call.argument<String>("artist_name") ?: ""
+                            val filePath = call.argument<String>("file_path") ?: ""
                             val response = withContext(Dispatchers.IO) {
-                                Gobackend.getLyricsLRC(spotifyId, trackName, artistName)
+                                Gobackend.getLyricsLRC(spotifyId, trackName, artistName, filePath)
                             }
                             result.success(response)
                         }

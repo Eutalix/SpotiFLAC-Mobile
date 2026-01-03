@@ -47,6 +47,11 @@ class _TrackMetadataScreenState extends ConsumerState<TrackMetadataScreen> {
         _fileExists = exists;
         _fileSize = size;
       });
+      
+      // Auto-load lyrics if file exists (embedded lyrics are instant)
+      if (exists) {
+        _fetchLyrics();
+      }
     }
   }
 
@@ -359,22 +364,38 @@ class _TrackMetadataScreenState extends ConsumerState<TrackMetadataScreen> {
   Future<void> _openSpotifyUrl(BuildContext context) async {
     if (item.spotifyId == null) return;
     
-    final url = 'https://open.spotify.com/track/${item.spotifyId}';
+    final webUrl = 'https://open.spotify.com/track/${item.spotifyId}';
+    final spotifyUri = Uri.parse('spotify:track:${item.spotifyId}');
+    
     try {
-      // Try to open in Spotify app first, fallback to browser
-      final uri = Uri.parse('spotify:track:${item.spotifyId}');
-      // ignore: deprecated_member_use
-      if (await canLaunchUrl(uri)) {
-        await launchUrl(uri);
-      } else {
-        await launchUrl(Uri.parse(url), mode: LaunchMode.externalApplication);
+      // Try to open in Spotify app first using URI scheme
+      final launched = await launchUrl(
+        spotifyUri,
+        mode: LaunchMode.externalApplication,
+      );
+      
+      if (!launched) {
+        // Fallback to web URL which will redirect to app if installed
+        await launchUrl(
+          Uri.parse(webUrl),
+          mode: LaunchMode.externalApplication,
+        );
       }
     } catch (e) {
-      if (context.mounted) {
-        _copyToClipboard(context, url);
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Spotify URL copied to clipboard')),
+      // If URI scheme fails, try web URL
+      try {
+        await launchUrl(
+          Uri.parse(webUrl),
+          mode: LaunchMode.externalApplication,
         );
+      } catch (_) {
+        // Last resort: copy to clipboard
+        if (context.mounted) {
+          _copyToClipboard(context, webUrl);
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Spotify URL copied to clipboard')),
+          );
+        }
       }
     }
   }
@@ -392,6 +413,8 @@ class _TrackMetadataScreenState extends ConsumerState<TrackMetadataScreen> {
         _MetadataItem('Disc number', item.discNumber.toString()),
       if (item.duration != null)
         _MetadataItem('Duration', _formatDuration(item.duration!)),
+      if (item.quality != null && item.quality!.contains('bit'))
+        _MetadataItem('Audio quality', item.quality!),
       if (item.releaseDate != null && item.releaseDate!.isNotEmpty)
         _MetadataItem('Release date', item.releaseDate!),
       if (item.isrc != null && item.isrc!.isNotEmpty)
@@ -740,6 +763,7 @@ class _TrackMetadataScreenState extends ConsumerState<TrackMetadataScreen> {
         item.spotifyId ?? '',
         item.trackName,
         item.artistName,
+        filePath: _fileExists ? item.filePath : null, // Try embedded lyrics first
       );
       
       if (mounted) {

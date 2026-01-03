@@ -349,6 +349,17 @@ class _AlbumScreenState extends ConsumerState<AlbumScreen> {
               padding: const EdgeInsets.fromLTRB(24, 16, 24, 8),
               child: Text('Select Quality', style: Theme.of(context).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.bold)),
             ),
+            // Disclaimer
+            Padding(
+              padding: const EdgeInsets.fromLTRB(24, 0, 24, 12),
+              child: Text(
+                'Actual quality depends on track availability. Hi-Res may not be available for all tracks.',
+                style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                  color: colorScheme.onSurfaceVariant,
+                  fontStyle: FontStyle.italic,
+                ),
+              ),
+            ),
             _QualityOption(title: 'FLAC Lossless', subtitle: '16-bit / 44.1kHz', icon: Icons.music_note, onTap: () { Navigator.pop(context); onSelect('LOSSLESS'); }),
             _QualityOption(title: 'Hi-Res FLAC', subtitle: '24-bit / up to 96kHz', icon: Icons.high_quality, onTap: () { Navigator.pop(context); onSelect('HI_RES'); }),
             _QualityOption(title: 'Hi-Res FLAC Max', subtitle: '24-bit / up to 192kHz', icon: Icons.four_k, onTap: () { Navigator.pop(context); onSelect('HI_RES_LOSSLESS'); }),

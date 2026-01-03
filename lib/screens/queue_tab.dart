@@ -558,6 +558,31 @@ class _QueueTabState extends ConsumerState<QueueTab> {
                         ),
                 ),
               ),
+              // Quality badge (top-left)
+              if (item.quality != null && item.quality!.contains('bit'))
+                Positioned(
+                  left: 4,
+                  top: 4,
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
+                    decoration: BoxDecoration(
+                      color: item.quality!.startsWith('24') 
+                          ? colorScheme.tertiary 
+                          : colorScheme.surfaceContainerHighest,
+                      borderRadius: BorderRadius.circular(4),
+                    ),
+                    child: Text(
+                      item.quality!.split('/').first, // Just show "24-bit" or "16-bit"
+                      style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                        color: item.quality!.startsWith('24') 
+                            ? colorScheme.onTertiary 
+                            : colorScheme.onSurfaceVariant,
+                        fontSize: 9,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ),
+                ),
               // Play button overlay
               if (fileExists)
                 Positioned(
@@ -677,11 +702,38 @@ class _QueueTabState extends ConsumerState<QueueTab> {
                       ),
                     ),
                     const SizedBox(height: 2),
-                    Text(
-                      dateStr,
-                      style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                        color: colorScheme.onSurfaceVariant.withValues(alpha: 0.7),
-                      ),
+                    Row(
+                      children: [
+                        Text(
+                          dateStr,
+                          style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                            color: colorScheme.onSurfaceVariant.withValues(alpha: 0.7),
+                          ),
+                        ),
+                        // Quality badge
+                        if (item.quality != null && item.quality!.contains('bit')) ...[
+                          const SizedBox(width: 8),
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                            decoration: BoxDecoration(
+                              color: item.quality!.startsWith('24') 
+                                  ? colorScheme.tertiaryContainer 
+                                  : colorScheme.surfaceContainerHighest,
+                              borderRadius: BorderRadius.circular(4),
+                            ),
+                            child: Text(
+                              item.quality!,
+                              style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                                color: item.quality!.startsWith('24') 
+                                    ? colorScheme.onTertiaryContainer 
+                                    : colorScheme.onSurfaceVariant,
+                                fontSize: 10,
+                                fontWeight: FontWeight.w500,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ],
                     ),
                   ],
                 ),
