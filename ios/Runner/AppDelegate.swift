@@ -414,8 +414,7 @@ import Gobackend  // Import Go framework
             let args = call.arguments as! [String: Any]
             let extensionId = args["extension_id"] as! String
             let authCode = args["auth_code"] as! String
-            GobackendSetExtensionAuthCode(extensionId, authCode, &error)
-            if let error = error { throw error }
+            GobackendSetExtensionAuthCodeByID(extensionId, authCode)
             return nil
             
         case "setExtensionTokens":
@@ -424,20 +423,19 @@ import Gobackend  // Import Go framework
             let accessToken = args["access_token"] as! String
             let refreshToken = args["refresh_token"] as? String ?? ""
             let expiresIn = args["expires_in"] as? Int ?? 0
-            GobackendSetExtensionTokens(extensionId, accessToken, refreshToken, Int(expiresIn), &error)
-            if let error = error { throw error }
+            GobackendSetExtensionTokensByID(extensionId, accessToken, refreshToken, Int(expiresIn))
             return nil
             
         case "clearExtensionPendingAuth":
             let args = call.arguments as! [String: Any]
             let extensionId = args["extension_id"] as! String
-            GobackendClearExtensionPendingAuth(extensionId)
+            GobackendClearExtensionPendingAuthByID(extensionId)
             return nil
             
         case "isExtensionAuthenticated":
             let args = call.arguments as! [String: Any]
             let extensionId = args["extension_id"] as! String
-            let response = GobackendIsExtensionAuthenticated(extensionId)
+            let response = GobackendIsExtensionAuthenticatedByID(extensionId)
             return response
             
         case "getAllPendingAuthRequests":
