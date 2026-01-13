@@ -32,9 +32,14 @@ func ParseSpotifyURL(url string) (string, error) {
 }
 
 // SetSpotifyAPICredentials sets custom Spotify API credentials from Flutter
-// Pass empty strings to use default credentials
 func SetSpotifyAPICredentials(clientID, clientSecret string) {
 	SetSpotifyCredentials(clientID, clientSecret)
+}
+
+// CheckSpotifyCredentials checks if Spotify credentials are configured
+// Returns true if credentials are available (custom or env vars)
+func CheckSpotifyCredentials() bool {
+	return HasSpotifyCredentials()
 }
 
 // GetSpotifyMetadata fetches metadata from Spotify URL
@@ -43,7 +48,10 @@ func GetSpotifyMetadata(spotifyURL string) (string, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
-	client := NewSpotifyMetadataClient()
+	client, err := NewSpotifyMetadataClient()
+	if err != nil {
+		return "", err
+	}
 	data, err := client.GetFilteredData(ctx, spotifyURL, false, 0)
 	if err != nil {
 		return "", err
@@ -63,7 +71,10 @@ func SearchSpotify(query string, limit int) (string, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 	defer cancel()
 
-	client := NewSpotifyMetadataClient()
+	client, err := NewSpotifyMetadataClient()
+	if err != nil {
+		return "", err
+	}
 	results, err := client.SearchTracks(ctx, query, limit)
 	if err != nil {
 		return "", err
@@ -83,7 +94,10 @@ func SearchSpotifyAll(query string, trackLimit, artistLimit int) (string, error)
 	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 	defer cancel()
 
-	client := NewSpotifyMetadataClient()
+	client, err := NewSpotifyMetadataClient()
+	if err != nil {
+		return "", err
+	}
 	results, err := client.SearchAll(ctx, query, trackLimit, artistLimit)
 	if err != nil {
 		return "", err
@@ -135,6 +149,7 @@ type DownloadRequest struct {
 	ReleaseDate          string `json:"release_date"`
 	ItemID               string `json:"item_id"`     // Unique ID for progress tracking
 	DurationMS           int    `json:"duration_ms"` // Expected duration in milliseconds (for verification)
+	Source               string `json:"source"`      // Extension ID that provided this track (prioritize this extension)
 }
 
 // DownloadResponse represents the result of a download
@@ -152,10 +167,14 @@ type DownloadResponse struct {
 	Title            string `json:"title,omitempty"`
 	Artist           string `json:"artist,omitempty"`
 	Album            string `json:"album,omitempty"`
+	AlbumArtist      string `json:"album_artist,omitempty"`
 	ReleaseDate      string `json:"release_date,omitempty"`
 	TrackNumber      int    `json:"track_number,omitempty"`
 	DiscNumber       int    `json:"disc_number,omitempty"`
 	ISRC             string `json:"isrc,omitempty"`
+	CoverURL         string `json:"cover_url,omitempty"`
+	// If true, skip metadata enrichment from Deezer/Spotify (extension already provides metadata)
+	SkipMetadataEnrichment bool `json:"skip_metadata_enrichment,omitempty"`
 }
 
 // DownloadResult is a generic result type for all downloaders
@@ -188,6 +207,11 @@ func DownloadTrack(requestJSON string) (string, error) {
 	req.AlbumName = strings.TrimSpace(req.AlbumName)
 	req.AlbumArtist = strings.TrimSpace(req.AlbumArtist)
 	req.OutputDir = strings.TrimSpace(req.OutputDir)
+
+	// Add output directory to allowed download dirs for extensions
+	if req.OutputDir != "" {
+		AddAllowedDownloadDir(req.OutputDir)
+	}
 
 	var result DownloadResult
 	var err error
@@ -325,6 +349,11 @@ func DownloadWithFallback(requestJSON string) (string, error) {
 	req.AlbumName = strings.TrimSpace(req.AlbumName)
 	req.AlbumArtist = strings.TrimSpace(req.AlbumArtist)
 	req.OutputDir = strings.TrimSpace(req.OutputDir)
+
+	// Add output directory to allowed download dirs for extensions
+	if req.OutputDir != "" {
+		AddAllowedDownloadDir(req.OutputDir)
+	}
 
 	// Build service order starting with preferred service
 	allServices := []string{"tidal", "qobuz", "amazon"}
@@ -888,21 +917,26 @@ func GetSpotifyMetadataWithDeezerFallback(spotifyURL string) (string, error) {
 	defer cancel()
 
 	// Try Spotify first
-	client := NewSpotifyMetadataClient()
-	data, err := client.GetFilteredData(ctx, spotifyURL, false, 0)
-	if err == nil {
-		jsonBytes, err := json.Marshal(data)
-		if err != nil {
+	client, err := NewSpotifyMetadataClient()
+	if err != nil {
+		// No Spotify credentials - fall through to Deezer fallback
+		LogWarn("Spotify", "Credentials not configured, falling back to Deezer")
+	} else {
+		data, err := client.GetFilteredData(ctx, spotifyURL, false, 0)
+		if err == nil {
+			jsonBytes, err := json.Marshal(data)
+			if err != nil {
+				return "", err
+			}
+			return string(jsonBytes), nil
+		}
+
+		// Check if it's a rate limit error
+		errStr := strings.ToLower(err.Error())
+		if !strings.Contains(errStr, "429") && !strings.Contains(errStr, "rate") && !strings.Contains(errStr, "limit") {
+			// Not a rate limit error, return original error
 			return "", err
 		}
-		return string(jsonBytes), nil
-	}
-
-	// Check if it's a rate limit error
-	errStr := strings.ToLower(err.Error())
-	if !strings.Contains(errStr, "429") && !strings.Contains(errStr, "rate") && !strings.Contains(errStr, "limit") {
-		// Not a rate limit error, return original error
-		return "", err
 	}
 
 	// Rate limited - try Deezer fallback for tracks and albums
@@ -1021,4 +1055,805 @@ func errorResponse(msg string) (string, error) {
 	}
 	jsonBytes, _ := json.Marshal(resp)
 	return string(jsonBytes), nil
+}
+
+// ==================== EXTENSION SYSTEM ====================
+
+// InitExtensionSystem initializes the extension system with directories
+func InitExtensionSystem(extensionsDir, dataDir string) error {
+	manager := GetExtensionManager()
+	if err := manager.SetDirectories(extensionsDir, dataDir); err != nil {
+		return err
+	}
+
+	settingsStore := GetExtensionSettingsStore()
+	if err := settingsStore.SetDataDir(dataDir); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+// LoadExtensionsFromDir loads all extensions from a directory
+func LoadExtensionsFromDir(dirPath string) (string, error) {
+	manager := GetExtensionManager()
+	loaded, errors := manager.LoadExtensionsFromDirectory(dirPath)
+
+	result := map[string]interface{}{
+		"loaded": loaded,
+		"errors": make([]string, len(errors)),
+	}
+
+	for i, err := range errors {
+		result["errors"].([]string)[i] = err.Error()
+	}
+
+	jsonBytes, err := json.Marshal(result)
+	if err != nil {
+		return "", err
+	}
+
+	return string(jsonBytes), nil
+}
+
+// LoadExtensionFromPath loads a single extension from a .spotiflac-ext file
+func LoadExtensionFromPath(filePath string) (string, error) {
+	manager := GetExtensionManager()
+	ext, err := manager.LoadExtensionFromFile(filePath)
+	if err != nil {
+		return "", err
+	}
+
+	// Initialize with saved settings
+	settingsStore := GetExtensionSettingsStore()
+	settings := settingsStore.GetAll(ext.ID)
+	if len(settings) > 0 {
+		manager.InitializeExtension(ext.ID, settings)
+	}
+
+	result := map[string]interface{}{
+		"id":           ext.ID,
+		"name":         ext.Manifest.Name,
+		"display_name": ext.Manifest.DisplayName,
+		"version":      ext.Manifest.Version,
+		"enabled":      ext.Enabled,
+	}
+
+	jsonBytes, err := json.Marshal(result)
+	if err != nil {
+		return "", err
+	}
+
+	return string(jsonBytes), nil
+}
+
+// UnloadExtensionByID unloads an extension
+func UnloadExtensionByID(extensionID string) error {
+	manager := GetExtensionManager()
+	return manager.UnloadExtension(extensionID)
+}
+
+// RemoveExtensionByID completely removes an extension (unload + delete files)
+func RemoveExtensionByID(extensionID string) error {
+	manager := GetExtensionManager()
+	return manager.RemoveExtension(extensionID)
+}
+
+// UpgradeExtensionFromPath upgrades an existing extension from a new package file
+func UpgradeExtensionFromPath(filePath string) (string, error) {
+	manager := GetExtensionManager()
+	ext, err := manager.UpgradeExtension(filePath)
+	if err != nil {
+		return "", err
+	}
+
+	// Initialize with saved settings
+	settingsStore := GetExtensionSettingsStore()
+	settings := settingsStore.GetAll(ext.ID)
+	if len(settings) > 0 {
+		manager.InitializeExtension(ext.ID, settings)
+	}
+
+	// Return extension info as JSON
+	result := map[string]interface{}{
+		"id":           ext.ID,
+		"display_name": ext.Manifest.DisplayName,
+		"version":      ext.Manifest.Version,
+		"enabled":      ext.Enabled,
+	}
+
+	jsonBytes, err := json.Marshal(result)
+	if err != nil {
+		return "", err
+	}
+
+	return string(jsonBytes), nil
+}
+
+// CheckExtensionUpgradeFromPath checks if a package file is an upgrade for an existing extension
+func CheckExtensionUpgradeFromPath(filePath string) (string, error) {
+	manager := GetExtensionManager()
+	return manager.CheckExtensionUpgradeJSON(filePath)
+}
+
+// GetInstalledExtensions returns all installed extensions as JSON
+func GetInstalledExtensions() (string, error) {
+	manager := GetExtensionManager()
+	return manager.GetInstalledExtensionsJSON()
+}
+
+// SetExtensionEnabledByID enables or disables an extension
+func SetExtensionEnabledByID(extensionID string, enabled bool) error {
+	manager := GetExtensionManager()
+	return manager.SetExtensionEnabled(extensionID, enabled)
+}
+
+// SetProviderPriorityJSON sets the provider priority order from JSON array
+func SetProviderPriorityJSON(priorityJSON string) error {
+	var priority []string
+	if err := json.Unmarshal([]byte(priorityJSON), &priority); err != nil {
+		return err
+	}
+
+	SetProviderPriority(priority)
+	return nil
+}
+
+// GetProviderPriorityJSON returns the provider priority order as JSON
+func GetProviderPriorityJSON() (string, error) {
+	priority := GetProviderPriority()
+	jsonBytes, err := json.Marshal(priority)
+	if err != nil {
+		return "", err
+	}
+	return string(jsonBytes), nil
+}
+
+// SetMetadataProviderPriorityJSON sets the metadata provider priority order from JSON array
+func SetMetadataProviderPriorityJSON(priorityJSON string) error {
+	var priority []string
+	if err := json.Unmarshal([]byte(priorityJSON), &priority); err != nil {
+		return err
+	}
+
+	SetMetadataProviderPriority(priority)
+	return nil
+}
+
+// GetMetadataProviderPriorityJSON returns the metadata provider priority order as JSON
+func GetMetadataProviderPriorityJSON() (string, error) {
+	priority := GetMetadataProviderPriority()
+	jsonBytes, err := json.Marshal(priority)
+	if err != nil {
+		return "", err
+	}
+	return string(jsonBytes), nil
+}
+
+// GetExtensionSettingsJSON returns settings for an extension as JSON
+func GetExtensionSettingsJSON(extensionID string) (string, error) {
+	store := GetExtensionSettingsStore()
+	settings := store.GetAll(extensionID)
+
+	jsonBytes, err := json.Marshal(settings)
+	if err != nil {
+		return "", err
+	}
+
+	return string(jsonBytes), nil
+}
+
+// SetExtensionSettingsJSON sets settings for an extension from JSON
+func SetExtensionSettingsJSON(extensionID, settingsJSON string) error {
+	var settings map[string]interface{}
+	if err := json.Unmarshal([]byte(settingsJSON), &settings); err != nil {
+		return err
+	}
+
+	store := GetExtensionSettingsStore()
+	if err := store.SetAll(extensionID, settings); err != nil {
+		return err
+	}
+
+	// Re-initialize extension with new settings
+	manager := GetExtensionManager()
+	return manager.InitializeExtension(extensionID, settings)
+}
+
+// SearchTracksWithExtensionsJSON searches all extension metadata providers
+func SearchTracksWithExtensionsJSON(query string, limit int) (string, error) {
+	manager := GetExtensionManager()
+	tracks, err := manager.SearchTracksWithExtensions(query, limit)
+	if err != nil {
+		return "", err
+	}
+
+	jsonBytes, err := json.Marshal(tracks)
+	if err != nil {
+		return "", err
+	}
+
+	return string(jsonBytes), nil
+}
+
+// DownloadWithExtensionsJSON downloads using extension providers with fallback
+func DownloadWithExtensionsJSON(requestJSON string) (string, error) {
+	var req DownloadRequest
+	if err := json.Unmarshal([]byte(requestJSON), &req); err != nil {
+		return "", fmt.Errorf("invalid request: %w", err)
+	}
+
+	result, err := DownloadWithExtensionFallback(req)
+	if err != nil {
+		return "", err
+	}
+
+	jsonBytes, err := json.Marshal(result)
+	if err != nil {
+		return "", err
+	}
+
+	return string(jsonBytes), nil
+}
+
+// CleanupExtensions unloads all extensions gracefully
+func CleanupExtensions() {
+	manager := GetExtensionManager()
+	manager.UnloadAllExtensions()
+}
+
+// ==================== EXTENSION AUTH API ====================
+
+// GetExtensionPendingAuthJSON returns pending auth request for an extension
+func GetExtensionPendingAuthJSON(extensionID string) (string, error) {
+	req := GetPendingAuthRequest(extensionID)
+	if req == nil {
+		return "", nil
+	}
+
+	result := map[string]interface{}{
+		"extension_id": req.ExtensionID,
+		"auth_url":     req.AuthURL,
+		"callback_url": req.CallbackURL,
+	}
+
+	jsonBytes, err := json.Marshal(result)
+	if err != nil {
+		return "", err
+	}
+
+	return string(jsonBytes), nil
+}
+
+// SetExtensionAuthCodeByID sets auth code for an extension (called from Flutter after OAuth callback)
+func SetExtensionAuthCodeByID(extensionID, authCode string) {
+	SetExtensionAuthCode(extensionID, authCode)
+}
+
+// SetExtensionTokensByID sets tokens for an extension
+func SetExtensionTokensByID(extensionID, accessToken, refreshToken string, expiresIn int) {
+	var expiresAt time.Time
+	if expiresIn > 0 {
+		expiresAt = time.Now().Add(time.Duration(expiresIn) * time.Second)
+	}
+	SetExtensionTokens(extensionID, accessToken, refreshToken, expiresAt)
+}
+
+// ClearExtensionPendingAuthByID clears pending auth request for an extension
+func ClearExtensionPendingAuthByID(extensionID string) {
+	ClearPendingAuthRequest(extensionID)
+}
+
+// IsExtensionAuthenticatedByID checks if an extension is authenticated
+func IsExtensionAuthenticatedByID(extensionID string) bool {
+	extensionAuthStateMu.RLock()
+	defer extensionAuthStateMu.RUnlock()
+
+	state, exists := extensionAuthState[extensionID]
+	if !exists {
+		return false
+	}
+
+	// Check if token is expired
+	if state.IsAuthenticated && !state.ExpiresAt.IsZero() && time.Now().After(state.ExpiresAt) {
+		return false
+	}
+
+	return state.IsAuthenticated
+}
+
+// GetAllPendingAuthRequestsJSON returns all pending auth requests
+func GetAllPendingAuthRequestsJSON() (string, error) {
+	pendingAuthRequestsMu.RLock()
+	defer pendingAuthRequestsMu.RUnlock()
+
+	requests := make([]map[string]interface{}, 0, len(pendingAuthRequests))
+	for _, req := range pendingAuthRequests {
+		requests = append(requests, map[string]interface{}{
+			"extension_id": req.ExtensionID,
+			"auth_url":     req.AuthURL,
+			"callback_url": req.CallbackURL,
+		})
+	}
+
+	jsonBytes, err := json.Marshal(requests)
+	if err != nil {
+		return "", err
+	}
+
+	return string(jsonBytes), nil
+}
+
+// ==================== EXTENSION FFMPEG API ====================
+
+// GetPendingFFmpegCommandJSON returns a pending FFmpeg command for Flutter to execute
+func GetPendingFFmpegCommandJSON(commandID string) (string, error) {
+	cmd := GetPendingFFmpegCommand(commandID)
+	if cmd == nil {
+		return "", nil
+	}
+
+	result := map[string]interface{}{
+		"command_id":   commandID,
+		"extension_id": cmd.ExtensionID,
+		"command":      cmd.Command,
+		"input_path":   cmd.InputPath,
+		"output_path":  cmd.OutputPath,
+	}
+
+	jsonBytes, err := json.Marshal(result)
+	if err != nil {
+		return "", err
+	}
+
+	return string(jsonBytes), nil
+}
+
+// SetFFmpegCommandResultByID sets the result of an FFmpeg command
+func SetFFmpegCommandResultByID(commandID string, success bool, output, errorMsg string) {
+	SetFFmpegCommandResult(commandID, success, output, errorMsg)
+}
+
+// GetAllPendingFFmpegCommandsJSON returns all pending FFmpeg commands
+func GetAllPendingFFmpegCommandsJSON() (string, error) {
+	ffmpegCommandsMu.RLock()
+	defer ffmpegCommandsMu.RUnlock()
+
+	commands := make([]map[string]interface{}, 0)
+	for cmdID, cmd := range ffmpegCommands {
+		if !cmd.Completed {
+			commands = append(commands, map[string]interface{}{
+				"command_id":   cmdID,
+				"extension_id": cmd.ExtensionID,
+				"command":      cmd.Command,
+			})
+		}
+	}
+
+	jsonBytes, err := json.Marshal(commands)
+	if err != nil {
+		return "", err
+	}
+
+	return string(jsonBytes), nil
+}
+
+// ==================== EXTENSION CUSTOM SEARCH ====================
+
+// EnrichTrackWithExtensionJSON enriches track metadata using the source extension
+// This is called lazily before download starts, allowing extension to fetch real ISRC etc.
+func EnrichTrackWithExtensionJSON(extensionID, trackJSON string) (string, error) {
+	manager := GetExtensionManager()
+	ext, err := manager.GetExtension(extensionID)
+	if err != nil {
+		// Extension not found, return original track
+		return trackJSON, nil
+	}
+
+	if !ext.Manifest.IsMetadataProvider() {
+		// Not a metadata provider, return original
+		return trackJSON, nil
+	}
+
+	var track ExtTrackMetadata
+	if err := json.Unmarshal([]byte(trackJSON), &track); err != nil {
+		return trackJSON, fmt.Errorf("failed to parse track: %w", err)
+	}
+
+	provider := NewExtensionProviderWrapper(ext)
+	enrichedTrack, err := provider.EnrichTrack(&track)
+	if err != nil {
+		// Error enriching, return original
+		return trackJSON, nil
+	}
+
+	jsonBytes, err := json.Marshal(enrichedTrack)
+	if err != nil {
+		return trackJSON, nil
+	}
+
+	return string(jsonBytes), nil
+}
+
+// CustomSearchWithExtensionJSON performs custom search using an extension
+func CustomSearchWithExtensionJSON(extensionID, query string, optionsJSON string) (string, error) {
+	manager := GetExtensionManager()
+	ext, err := manager.GetExtension(extensionID)
+	if err != nil {
+		return "", err
+	}
+
+	if !ext.Manifest.HasCustomSearch() {
+		return "", fmt.Errorf("extension '%s' does not support custom search", extensionID)
+	}
+
+	var options map[string]interface{}
+	if optionsJSON != "" {
+		if err := json.Unmarshal([]byte(optionsJSON), &options); err != nil {
+			options = make(map[string]interface{})
+		}
+	}
+
+	provider := NewExtensionProviderWrapper(ext)
+	tracks, err := provider.CustomSearch(query, options)
+	if err != nil {
+		return "", err
+	}
+
+	// Convert to map format for Flutter, ensuring images field is set
+	result := make([]map[string]interface{}, len(tracks))
+	for i, track := range tracks {
+		result[i] = map[string]interface{}{
+			"id":           track.ID,
+			"name":         track.Name,
+			"artists":      track.Artists,
+			"album_name":   track.AlbumName,
+			"album_artist": track.AlbumArtist,
+			"duration_ms":  track.DurationMS,
+			"images":       track.ResolvedCoverURL(), // Use helper to get cover URL from either field
+			"release_date": track.ReleaseDate,
+			"track_number": track.TrackNumber,
+			"disc_number":  track.DiscNumber,
+			"isrc":         track.ISRC,
+			"provider_id":  track.ProviderID,
+		}
+	}
+
+	jsonBytes, err := json.Marshal(result)
+	if err != nil {
+		return "", err
+	}
+
+	return string(jsonBytes), nil
+}
+
+// GetSearchProvidersJSON returns all extensions that provide custom search
+func GetSearchProvidersJSON() (string, error) {
+	manager := GetExtensionManager()
+	providers := manager.GetSearchProviders()
+
+	result := make([]map[string]interface{}, 0, len(providers))
+	for _, p := range providers {
+		result = append(result, map[string]interface{}{
+			"id":           p.extension.ID,
+			"display_name": p.extension.Manifest.DisplayName,
+			"placeholder":  p.extension.Manifest.SearchBehavior.Placeholder,
+			"primary":      p.extension.Manifest.SearchBehavior.Primary,
+			"icon":         p.extension.Manifest.SearchBehavior.Icon,
+		})
+	}
+
+	jsonBytes, err := json.Marshal(result)
+	if err != nil {
+		return "", err
+	}
+
+	return string(jsonBytes), nil
+}
+
+// ==================== EXTENSION URL HANDLER ====================
+
+// HandleURLWithExtensionJSON tries to handle a URL with any matching extension
+// Returns JSON with type, tracks, album info, etc.
+func HandleURLWithExtensionJSON(url string) (string, error) {
+	manager := GetExtensionManager()
+	resultWithID, err := manager.HandleURLWithExtension(url)
+	if err != nil {
+		return "", err
+	}
+
+	result := resultWithID.Result
+	extensionID := resultWithID.ExtensionID
+
+	// Check if result is nil (handler found but returned error)
+	if result == nil {
+		return "", fmt.Errorf("extension %s failed to handle URL", extensionID)
+	}
+
+	// Build response
+	response := map[string]interface{}{
+		"type":         result.Type,
+		"extension_id": extensionID,
+		"name":         result.Name,
+		"cover_url":    result.CoverURL,
+	}
+
+	// Add track if single track
+	if result.Track != nil {
+		response["track"] = map[string]interface{}{
+			"id":           result.Track.ID,
+			"name":         result.Track.Name,
+			"artists":      result.Track.Artists,
+			"album_name":   result.Track.AlbumName,
+			"album_artist": result.Track.AlbumArtist,
+			"duration_ms":  result.Track.DurationMS,
+			"images":       result.Track.ResolvedCoverURL(),
+			"release_date": result.Track.ReleaseDate,
+			"track_number": result.Track.TrackNumber,
+			"disc_number":  result.Track.DiscNumber,
+			"isrc":         result.Track.ISRC,
+			"provider_id":  result.Track.ProviderID,
+		}
+	}
+
+	// Add tracks if multiple
+	if len(result.Tracks) > 0 {
+		tracks := make([]map[string]interface{}, len(result.Tracks))
+		for i, track := range result.Tracks {
+			tracks[i] = map[string]interface{}{
+				"id":           track.ID,
+				"name":         track.Name,
+				"artists":      track.Artists,
+				"album_name":   track.AlbumName,
+				"album_artist": track.AlbumArtist,
+				"duration_ms":  track.DurationMS,
+				"images":       track.ResolvedCoverURL(),
+				"release_date": track.ReleaseDate,
+				"track_number": track.TrackNumber,
+				"disc_number":  track.DiscNumber,
+				"isrc":         track.ISRC,
+				"provider_id":  track.ProviderID,
+			}
+		}
+		response["tracks"] = tracks
+	}
+
+	// Add album info if present
+	if result.Album != nil {
+		response["album"] = map[string]interface{}{
+			"id":           result.Album.ID,
+			"name":         result.Album.Name,
+			"artists":      result.Album.Artists,
+			"cover_url":    result.Album.CoverURL,
+			"release_date": result.Album.ReleaseDate,
+			"total_tracks": result.Album.TotalTracks,
+		}
+	}
+
+	// Add artist info if present
+	if result.Artist != nil {
+		artistResponse := map[string]interface{}{
+			"id":        result.Artist.ID,
+			"name":      result.Artist.Name,
+			"image_url": result.Artist.ImageURL,
+		}
+
+		// Add albums if present
+		if len(result.Artist.Albums) > 0 {
+			albums := make([]map[string]interface{}, len(result.Artist.Albums))
+			for i, album := range result.Artist.Albums {
+				albumType := album.AlbumType
+				if albumType == "" {
+					albumType = "album"
+				}
+				albums[i] = map[string]interface{}{
+					"id":           album.ID,
+					"name":         album.Name,
+					"artists":      album.Artists,
+					"images":       album.CoverURL,
+					"release_date": album.ReleaseDate,
+					"total_tracks": album.TotalTracks,
+					"album_type":   albumType,
+				}
+			}
+			artistResponse["albums"] = albums
+		}
+
+		response["artist"] = artistResponse
+	}
+
+	jsonBytes, err := json.Marshal(response)
+	if err != nil {
+		return "", err
+	}
+
+	return string(jsonBytes), nil
+}
+
+// FindURLHandlerJSON finds an extension that can handle the given URL
+// Returns extension ID or empty string if none found
+func FindURLHandlerJSON(url string) string {
+	manager := GetExtensionManager()
+	handler := manager.FindURLHandler(url)
+	if handler == nil {
+		return ""
+	}
+	return handler.extension.ID
+}
+
+// GetURLHandlersJSON returns all extensions that handle custom URLs
+func GetURLHandlersJSON() (string, error) {
+	manager := GetExtensionManager()
+	handlers := manager.GetURLHandlers()
+
+	result := make([]map[string]interface{}, 0, len(handlers))
+	for _, h := range handlers {
+		result = append(result, map[string]interface{}{
+			"id":           h.extension.ID,
+			"display_name": h.extension.Manifest.DisplayName,
+			"patterns":     h.extension.Manifest.URLHandler.Patterns,
+		})
+	}
+
+	jsonBytes, err := json.Marshal(result)
+	if err != nil {
+		return "", err
+	}
+
+	return string(jsonBytes), nil
+}
+
+// ==================== EXTENSION POST-PROCESSING ====================
+
+// RunPostProcessingJSON runs post-processing hooks on a file
+func RunPostProcessingJSON(filePath, metadataJSON string) (string, error) {
+	var metadata map[string]interface{}
+	if metadataJSON != "" {
+		if err := json.Unmarshal([]byte(metadataJSON), &metadata); err != nil {
+			metadata = make(map[string]interface{})
+		}
+	}
+
+	manager := GetExtensionManager()
+	result, err := manager.RunPostProcessing(filePath, metadata)
+	if err != nil {
+		return "", err
+	}
+
+	jsonBytes, err := json.Marshal(result)
+	if err != nil {
+		return "", err
+	}
+
+	return string(jsonBytes), nil
+}
+
+// GetPostProcessingProvidersJSON returns all extensions that provide post-processing
+func GetPostProcessingProvidersJSON() (string, error) {
+	manager := GetExtensionManager()
+	providers := manager.GetPostProcessingProviders()
+
+	result := make([]map[string]interface{}, 0, len(providers))
+	for _, p := range providers {
+		hooks := make([]map[string]interface{}, 0)
+		for _, h := range p.extension.Manifest.GetPostProcessingHooks() {
+			hooks = append(hooks, map[string]interface{}{
+				"id":                h.ID,
+				"name":              h.Name,
+				"description":       h.Description,
+				"default_enabled":   h.DefaultEnabled,
+				"supported_formats": h.SupportedFormats,
+			})
+		}
+
+		result = append(result, map[string]interface{}{
+			"id":           p.extension.ID,
+			"display_name": p.extension.Manifest.DisplayName,
+			"hooks":        hooks,
+		})
+	}
+
+	jsonBytes, err := json.Marshal(result)
+	if err != nil {
+		return "", err
+	}
+
+	return string(jsonBytes), nil
+}
+
+// ==================== EXTENSION STORE ====================
+
+// InitExtensionStoreJSON initializes the extension store with cache directory
+func InitExtensionStoreJSON(cacheDir string) error {
+	InitExtensionStore(cacheDir)
+	return nil
+}
+
+// GetStoreExtensionsJSON returns all extensions from the store with installation status
+func GetStoreExtensionsJSON(forceRefresh bool) (string, error) {
+	store := GetExtensionStore()
+	if store == nil {
+		return "", fmt.Errorf("extension store not initialized")
+	}
+
+	// Force refresh if requested
+	if forceRefresh {
+		store.FetchRegistry(true)
+	}
+
+	extensions, err := store.GetExtensionsWithStatus()
+	if err != nil {
+		return "", err
+	}
+
+	jsonBytes, err := json.Marshal(extensions)
+	if err != nil {
+		return "", err
+	}
+
+	return string(jsonBytes), nil
+}
+
+// SearchStoreExtensionsJSON searches extensions in the store
+func SearchStoreExtensionsJSON(query, category string) (string, error) {
+	store := GetExtensionStore()
+	if store == nil {
+		return "", fmt.Errorf("extension store not initialized")
+	}
+
+	extensions, err := store.SearchExtensions(query, category)
+	if err != nil {
+		return "", err
+	}
+
+	jsonBytes, err := json.Marshal(extensions)
+	if err != nil {
+		return "", err
+	}
+
+	return string(jsonBytes), nil
+}
+
+// GetStoreCategoriesJSON returns all available categories
+func GetStoreCategoriesJSON() (string, error) {
+	store := GetExtensionStore()
+	if store == nil {
+		return "", fmt.Errorf("extension store not initialized")
+	}
+
+	categories := store.GetCategories()
+	jsonBytes, err := json.Marshal(categories)
+	if err != nil {
+		return "", err
+	}
+
+	return string(jsonBytes), nil
+}
+
+// DownloadStoreExtensionJSON downloads an extension from the store
+// Returns the path to the downloaded file
+func DownloadStoreExtensionJSON(extensionID, destDir string) (string, error) {
+	store := GetExtensionStore()
+	if store == nil {
+		return "", fmt.Errorf("extension store not initialized")
+	}
+
+	destPath := fmt.Sprintf("%s/%s.spotiflac-ext", destDir, extensionID)
+	err := store.DownloadExtension(extensionID, destPath)
+	if err != nil {
+		return "", err
+	}
+
+	return destPath, nil
+}
+
+// ClearStoreCacheJSON clears the store cache
+func ClearStoreCacheJSON() error {
+	store := GetExtensionStore()
+	if store == nil {
+		return fmt.Errorf("extension store not initialized")
+	}
+
+	store.ClearCache()
+	return nil
 }

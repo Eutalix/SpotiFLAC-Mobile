@@ -1,6 +1,343 @@
 # Changelog
 
-## [2.2.9] - 2026-01-12
+## [3.0.0] - 2026-01-14
+
+### Extension System (Major Feature)
+
+SpotiFLAC 3.0 introduces a powerful extension system that allows third-party integrations for metadata, downloads, and more.
+
+#### Extension Store
+
+- Browse and install extensions directly from the app
+- New "Store" tab in bottom navigation
+- Browse by category: Metadata, Download, Utility, Lyrics, Integration
+- Search extensions by name, description, or tags
+- One-tap install, update, and uninstall
+- Offline cache for browsing without internet
+
+#### Spotify Web Extension
+
+- Available in Extension Store - install and enable in Settings > Extensions
+- Metadata provider using Spotify's internal web player API
+- Download tracks from Daily Mix, Discover Weekly, and other personalized playlists
+- Useful when official Spotify API is rate-limited or unavailable
+
+#### Extension Capabilities
+
+- **Custom Search Providers**
+- **Custom URL Handlers**
+- **Custom Thumbnail Ratios**: Square (1:1), Wide (16:9), Portrait (2:3)
+- **Post-Processing Hooks**: Extensions can process downloaded files
+- **Quality Options**: Extensions can define custom quality settings
+
+#### Extension APIs
+
+- Full HTTP support: GET, POST, PUT, DELETE, PATCH
+- Persistent cookie jar per extension
+- Browser-like polyfills: `fetch()`, `atob()`/`btoa()`, `TextEncoder`/`TextDecoder`, `URL`/`URLSearchParams`
+- Storage API for persistent data
+- File API for file operations
+- HMAC-SHA1 utility for cryptographic operations
+
+#### Security
+
+- Sandboxed JavaScript runtime (goja)
+- Permission-based access control
+- Network domain whitelisting
+- Improved credential encryption with per-installation random salt
+
+### Added
+
+- **Album Folder Structure Setting**: Option to remove artist folder from album path
+
+  - `Artist / Album` (default): `Albums/Artist Name/Album Name/`
+  - `Album Only`: `Albums/Album Name/`
+
+- **Separate Singles Folder**: Organize downloads into Albums/ and Singles/ folders
+
+  - Based on `album_type` from Spotify/Deezer metadata
+  - Toggle in Settings > Download > Separate Singles Folder
+
+- **Parallel API Calls**: Download URL fetching now uses parallel requests
+  - Tidal: All 8 APIs requested simultaneously, first success wins
+  - Qobuz: Both APIs requested simultaneously, first success wins
+  - Significantly reduces download URL fetch time
+
+### UI/UX Improvements
+
+- **Swipeable History Filters**: History tab now supports swipe gestures between All, Albums, and Singles filters
+
+  - Swipe left/right to switch between filter tabs
+  - Filter chips sync with swipe position
+  - Smooth edge-to-edge transition: swipe past Singles to go to Store, swipe past All to go to Home
+  - Natural gesture feel - drag connects to parent navigation
+
+  - **Improved File Open Intent**: Play button in History now correctly opens music players only
+  - Added proper MIME type (`audio/flac`, `audio/mpeg`, etc.) when opening downloaded files
+  - Prevents system from showing unrelated apps in the "Open with" dialog
+
+### Fixed
+
+- **Fixed Tab Edge Overscroll**: Home and Settings tabs now stop at edges instead of bouncing into empty space
+
+- **Fixed Extension Duplicate Load Error**: Extension loading now silently skips already-loaded extensions instead of throwing error
+
+- **Fixed Settings Item Highlight on Swipe**: Settings items no longer highlight when swiping at page edge
+
+- **Fixed Keyboard Appearing on Tab Switch**: Keyboard now auto-dismisses when swiping between tabs
+
+- **Removed Search Source Badges**: Removed "Free" and "API Key" labels from Deezer/Spotify selector in Options
+
+- **Back Gesture Freeze on Android 13+**: Fixed app freeze when using back gesture in settings
+
+  - Added `PopScope` with `canPop: true` to all settings pages
+  - Changed navigation to use `PageRouteBuilder` with proper slide transition
+
+- **Bottom Overflow in Folder Organization Dialog**: Fixed overflow in portrait and landscape mode
+
+  - Made dialog scrollable with max height constraint
+
+- **Japanese Artist Name Order**: Fixed artist mismatch for Japanese names
+
+  - "Sawano Hiroyuki" vs "Hiroyuki Sawano" now correctly matches
+
+- **Multi-Artist Matching**: Fixed artist mismatch for collaboration tracks
+
+  - "RADWIMPS feat. Toko Miura" now matches when service only shows "Toko Miura"
+
+- **Max Resolution Cover Download**: Fixed cover not upgrading to max resolution on mobile
+
+  - Mobile now correctly upgrades 300x300 → 640x640 → max resolution (~2000x2000)
+
+- **EXISTS: Prefix in File Path**: Fixed "File not found" error in metadata screen
+
+  - Duplicate detection prefix now stripped before saving to history
+
+- **Extension Search Result Parsing**: Fixed "cannot unmarshal array" error
+
+  - Go backend now handles both array and object formats from extensions
+
+- **Store Tab Unmount Crash**: Fixed "Using ref when widget is unmounted" error
+
+- **Duplicate History Entries**: Fixed duplicate entries when re-downloading same track
+
+  - Detects existing entries by Spotify ID, Deezer ID, or ISRC
+
+- **Permission Error Message**: Fixed download showing "Song not found" when actually permission error
+
+  - Now shows proper message: "Cannot write to folder, check storage permission"
+
+- **Android 13+ Storage Permission**: Fixed storage permission not working on Android 13+
+  - Now requests both `MANAGE_EXTERNAL_STORAGE` and `READ_MEDIA_AUDIO`
+
+### Changed
+
+- **Extension Manifest**: New `file` permission required for file operations
+  ```json
+  "permissions": {
+    "network": ["api.example.com"],
+    "storage": true,
+    "file": true
+  }
+  ```
+
+### Technical
+
+- Go backend: Simplified parallel download result handling in Tidal/Qobuz
+- Go backend: Removed unused functions and fixed bit shifting warnings
+- Release workflow: Fixed duplicate `---` separator in release notes
+
+---
+
+## [3.0.0-beta.2] - 2026-01-13
+
+### Added
+
+- **Album Folder Structure Setting**: Option to remove artist folder from album path
+  - New setting in Download Settings when "Separate Singles Folder" is enabled
+  - `Artist / Album` (default): `Albums/Artist Name/Album Name/`
+  - `Album Only`: `Albums/Album Name/`
+  - Requested by user who prefers flat album organization
+
+### Fixed
+
+- **Back Gesture Freeze on OnePlus/Android 13+**: Fixed app freeze when using back gesture in settings
+
+  - Added `PopScope` with `canPop: true` to all settings pages
+  - Changed navigation to use `PageRouteBuilder` with proper slide transition
+  - Fixes predictive back gesture conflict on devices with gesture navigation
+  - Affected pages: Download, Appearance, Options, Extensions, About, Logs, Extension Detail
+
+- **Extension Search Result Parsing**: Fixed "cannot unmarshal array into Go value" error
+
+  - Go backend now handles both array and object formats from extensions
+  - Extensions returning `[{track}, {track}]` now work correctly
+  - Extensions returning `{tracks: [...], total: N}` still work as before
+
+- **Max Resolution Cover Download**: Fixed cover not upgrading to max resolution on mobile
+
+  - Added missing `spotifySize300` constant (300x300 size code)
+  - Mobile now correctly upgrades 300x300 → 640x640 → max resolution (~2000x2000)
+  - Added `_upgradeToMaxQualityCover()` helper in Flutter for M4A conversion path
+  - Go backend `cover.go` now directly replaces URL without HEAD verification
+
+- **Extension Search Provider Reset**: Fixed search provider not resetting to default when disabled
+
+  - `copyWith` in `AppSettings` couldn't set `searchProvider` to `null`
+  - Added `clearSearchProvider` boolean parameter to properly clear the value
+  - Settings menu now correctly switches back to default provider
+
+- **Extension Disabled Search Fallback**: Fixed error when extension is disabled but still called
+
+  - `_performSearch` now checks if extension is still enabled before calling custom search
+  - Automatically falls back to Deezer/Spotify search if extension was disabled
+  - Clears `searchProvider` setting if extension no longer available
+
+- **Store Tab Unmount Crash**: Fixed "Using ref when widget is unmounted" error
+
+  - Added `mounted` check after async operation in `_initialize()`
+  - Prevents crash when navigating away from Store tab during initialization
+
+- **EXISTS: Prefix in File Path**: Fixed "File not found" error in metadata screen after download
+
+  - Duplicate detection was adding `EXISTS:` prefix to file paths
+  - Prefix now stripped before saving to download history
+  - Legacy history items with prefix are handled gracefully
+
+- **History Error Badge**: Fixed error badge showing on history items even when file exists
+
+  - `queue_tab.dart` now strips `EXISTS:` prefix before checking file existence
+  - File open and delete operations also use cleaned path
+
+- **Extension Artist URL Handler**: Fixed artist pages showing "0 releases" from extensions
+
+  - Extension `fetchArtist` now returns correct format: `{ type: "artist", artist: { albums } }`
+  - Go backend `HandleURLWithExtensionJSON` now includes albums in artist response
+  - Added `AlbumType` field to `ExtAlbumMetadata` struct
+
+- **Extension Artist Name in Logs**: Fixed empty artist name in extension track logs
+
+  - Now uses `firstArtist` + `otherArtists` instead of deprecated `artists.items`
+  - Logs correctly show "Fetched track: {title} by {artist}"
+
+- **Japanese Artist Name Order**: Fixed artist mismatch for Japanese names with different order
+
+  - "Sawano Hiroyuki" vs "Hiroyuki Sawano" now correctly matches
+  - Added `sameWordsUnordered` check to both Tidal and Qobuz artist matching
+  - Handles Japanese name order (family name first) vs Western name order (given name first)
+
+- **Multi-Artist Matching**: Fixed artist mismatch for collaboration tracks
+
+  - "RADWIMPS feat. Toko Miura" now matches when Qobuz/Tidal only shows "Toko Miura"
+  - Split artists by separators (`, `, `feat.`, `ft.`, `&`, `and`, `x`)
+  - Match if ANY expected artist matches ANY found artist
+
+- **Cover Download Logging**: Improved cover download logs for debugging
+  - Shows original URL, upgrade steps, and final URL
+  - Displays estimated resolution based on file size
+  - Logs now appear in Settings > Logs via GoLog
+
+---
+
+## [3.0.0-beta.1] - 2026-01-13
+
+### Security
+
+- Improved extension sandbox security
+- Improved credential encryption with per-installation random salt
+
+### Changed
+
+- **Extension Manifest**: New `file` permission required for file operations
+  ```json
+  "permissions": {
+    "network": ["api.example.com"],
+    "storage": true,
+    "file": true
+  }
+  ```
+  Extensions that need to download files must declare `"file": true` in manifest.
+
+### Fixed
+
+- Extension packages now preserve directory structure (subdirectories supported)
+- Back gesture freeze in settings pages on Android gesture navigation
+
+---
+
+## [3.0.0-alpha.4] - 2026-01-12
+
+### Added
+
+- **Extension Store**: Browse and install extensions directly from the app
+
+  - New "Store" tab in bottom navigation
+  - Browse extensions by category (Metadata, Download, Utility, Lyrics, Integration)
+  - Search extensions by name, description, or tags
+  - One-tap install and update
+  - Offline cache for browsing without internet
+  - Extensions hosted at github.com/zarzet/SpotiFLAC-Extension
+
+- **Custom URL Handler for Extensions**: Extensions can now register custom URL patterns
+
+  - Handle URLs from YouTube Music, SoundCloud, Bandcamp, etc.
+  - Manifest config: `urlHandler: { enabled: true, patterns: ["music.youtube.com"] }`
+  - Implement `handleUrl(url)` function in extension to parse and return track metadata
+  - SpotiFLAC automatically routes matching URLs to the appropriate extension
+  - Supports share intents and paste from clipboard
+
+- **Artist URL Handler Support**: Extensions can now return artist data from URL handlers
+
+  - Added `type: "artist"` handling in track_provider.dart
+  - Navigate to artist screen with albums list from extension
+
+- **HMAC-SHA1 Utility**: New `utils.hmacSHA1(key, message)` function for extensions
+  - Enables TOTP generation and other cryptographic operations
+  - Returns byte array for flexible use
+
+### Fixed
+
+- **Extension Store Refresh**: Store tab now properly refreshes after uninstalling an extension
+  - "Installed" badge correctly updates to "Install" button
+
+### Documentation
+
+- Updated `docs/EXTENSION_DEVELOPMENT.md`:
+  - Added Custom URL Handler section with examples
+  - Added `handleUrl` function documentation
+  - Added URL pattern examples for YouTube, SoundCloud, Bandcamp
+  - Added `utils.hmacSHA1` documentation with TOTP example
+
+### Extensions
+
+- **Spotify Web Extension** (example): New extension for Spotify metadata via web API
+  - Supports personalized playlists (Daily Mix, Discover Weekly, Release Radar, etc.)
+  - Search, album, playlist, track, and artist fetching
+  - Available in Extension Store (3.0.0-alpha.4)
+
+---
+
+## [3.0.0-alpha.3] - 2026-01-12
+
+### Added
+
+- **Separate Singles Folder**: Option to organize downloads into Albums/ and Singles/ folders
+  - Based on `album_type` from Spotify/Deezer metadata
+  - Toggle in Settings > Download > Separate Singles Folder
+  - Singles saved to `{output}/Singles/`, albums to `{output}/Albums/`
+- **Browser-like Polyfills**: New global APIs for easier library porting
+  - `fetch()` - Browser-compatible HTTP API with `json()`, `text()`, `arrayBuffer()` methods
+  - `atob()` / `btoa()` - Global Base64 encoding/decoding
+  - `TextEncoder` / `TextDecoder` - UTF-8 text encoding classes
+  - `URL` / `URLSearchParams` - URL parsing and manipulation classes
+  - Makes porting browser libraries (like `youtubei.js`) much easier
+
+### Performance
+
+- **Parallel API Calls**: Download URL fetching now uses parallel requests
+  - Tidal: All 8 APIs requested simultaneously, first success wins
+  - Qobuz: Both APIs requested simultaneously, first success wins
+  - Significantly reduces download URL fetch time
 
 ### Fixed
 
@@ -8,6 +345,9 @@
   - Detects existing entries by Spotify ID, Deezer ID, or ISRC
   - Replaces existing entry and moves to top of list
   - Auto-deduplicates existing history on app load
+- **Extension Search Fallback**: Fixed error when extension is disabled but still called for search
+  - Now checks if extension is still enabled before calling custom search
+  - Auto-resets search provider to default if extension was disabled
 - **Permission Error Message**: Fixed download showing "Song not found" when actually a permission error
   - Now shows proper message: "Cannot write to folder, check storage permission"
   - Added `permission` error type detection in backend
@@ -16,6 +356,135 @@
   - `MANAGE_EXTERNAL_STORAGE` opens Settings (system-level, persists across app data clear)
   - `READ_MEDIA_AUDIO` shows dialog (app-level, resets on app data clear)
   - Proper permission check before showing "granted" status
+
+---
+
+## [3.0.0-alpha.2] - 2026-01-12
+
+### Added
+
+- **Full HTTP Method Support**: New shortcut methods for all common HTTP verbs
+  - `http.put(url, body, headers)` - PUT requests
+  - `http.delete(url, headers)` - DELETE requests
+  - `http.patch(url, body, headers)` - PATCH requests
+  - `http.clearCookies()` - Clear all cookies for the extension
+- **Persistent Cookie Jar**: Each extension now has its own cookie jar
+  - Cookies automatically stored from `Set-Cookie` headers
+  - Cookies automatically sent with subsequent requests to same domain
+  - Useful for APIs requiring session cookies (YouTube, etc.)
+- **Multi-Value Header Support**: Response headers now return arrays for multi-value headers
+  - `Set-Cookie` and other headers with multiple values returned as arrays
+  - Single-value headers still returned as strings for convenience
+- **Generic HTTP Request Method**: New `http.request()` for full HTTP control
+  - Supports all HTTP methods (GET, POST, PUT, DELETE, PATCH, etc.)
+  - Single options object for cleaner API: `http.request(url, { method, body, headers })`
+- **Response Helper Properties**: HTTP responses now include convenience properties
+  - `response.ok` - true if status code is 2xx
+  - `response.status` - alias for `statusCode`
+
+### Fixed
+
+- **User-Agent Header Respect**: Custom `User-Agent` headers are now respected
+  - Previously, extension-provided User-Agent was overwritten
+  - Now only sets default User-Agent if extension doesn't provide one
+- **HTTP POST Body Auto-Stringify**: `http.post()` now automatically stringifies objects to JSON
+  - Previously, passing an object as body resulted in `[object Object]`
+  - Now objects and arrays are automatically JSON.stringify'd
+  - String bodies still work as before (no double-encoding)
+
+### Documentation
+
+- Updated `docs/EXTENSION_DEVELOPMENT.md`:
+  - Added complete HTTP API documentation with all methods
+  - Added Cookie Jar documentation
+  - Added `http.put()`, `http.delete()`, `http.patch()`, `http.clearCookies()` docs
+  - Added YouTube Music / Innertube API example with custom User-Agent
+  - Added common domain lists for YouTube, SoundCloud, Bandcamp
+  - Improved HTTP API documentation with response properties
+
+---
+
+## [3.0.0-alpha.1] - 2026-01-11
+
+#### Extension System
+
+- **Custom Search Providers**: Extensions can now provide custom search functionality
+  - YouTube, SoundCloud, and other platforms via extensions
+  - Custom search placeholder text per extension
+  - Configurable thumbnail aspect ratios (square, wide, portrait)
+- **Extension Upgrade System**: Upgrade extensions without losing data
+  - Preserves extension settings and cached data during upgrades
+  - Version comparison prevents downgrades
+  - Auto-detects upgrades when installing same extension
+- **Custom Thumbnail Ratios**: Extensions can specify thumbnail display format
+  - `"square"` (1:1) - Album art style (default)
+  - `"wide"` (16:9) - YouTube/video style
+  - `"portrait"` (2:3) - Poster style
+  - Custom width/height override available
+
+### Added
+
+- **Track Source Tracking**: Tracks now remember which extension provided them
+  - `Track.source` field stores extension ID
+  - `TrackState.searchExtensionId` for current search context
+  - Enables extension-specific UI customization
+- **Extension Upgrade API**: New methods for extension management
+  - `upgradeExtension(filePath)` - Upgrade existing extension
+  - `checkExtensionUpgrade(filePath)` - Check if file is an upgrade
+  - `RemoveExtensionByID` - Remove extension by ID
+- **iOS Extension Support**: Added missing iOS method handlers
+  - `upgradeExtension` - Upgrade extension from file
+  - `checkExtensionUpgrade` - Check upgrade compatibility
+- **Extension Documentation**: Comprehensive extension development guide
+  - Thumbnail ratio customization documentation
+  - Extension upgrade workflow documentation
+  - New troubleshooting entries for common issues
+
+### Changed
+
+- **Version Bump**: 2.2.7 → 3.0.0-alpha.1 (major version for extension system)
+- **Build Number**: 49 → 50
+- **Extension Manager**: Improved upgrade detection in `LoadExtensionFromFile`
+  - Auto-detects if installing same extension with higher version
+  - Calls `UpgradeExtension` automatically for seamless upgrades
+
+### Fixed
+
+- **Extension `registerExtension`**: Fixed global `extension` variable not being set
+  - Extensions can now access their own functions via `extension.functionName()`
+  - Required for `customSearch` and other provider functions
+- **Custom Search Empty Results**: Fixed error when extension returns null
+  - Now returns empty array instead of error
+  - Prevents crash when no results found
+- **Mutex Crash on Upgrade**: Fixed "Unlock of unlocked RWMutex" crash
+  - Removed `defer m.mu.Unlock()` when manual unlock is used
+  - Proper lock handling in upgrade flow
+- **Duplicate Error Messages**: Fixed extension install errors showing twice
+  - Added `clearError()` method to extension provider
+  - Improved PlatformException parsing to remove "null, null" artifacts
+- **Extension Images Field**: Fixed thumbnails not showing in search results
+  - Added `Images` field to `ExtTrackMetadata` struct
+  - Renamed `GetCoverURL` to `ResolvedCoverURL` (gomobile conflict)
+
+### Technical
+
+- **Go Backend Changes**:
+  - `go_backend/extension_manager.go`: Added `compareVersions()`, `UpgradeExtension()`, `CheckExtensionUpgradeJSON()`
+  - `go_backend/extension_providers.go`: Added `Images` field, `ResolvedCoverURL()` method
+  - `go_backend/extension_manifest.go`: Added `ThumbnailRatio`, `ThumbnailWidth`, `ThumbnailHeight` to `SearchBehaviorConfig`
+  - `go_backend/exports.go`: Added `RemoveExtensionByID`, `UpgradeExtensionFromPath`, `CheckExtensionUpgradeFromPath`
+- **Flutter Changes**:
+  - `lib/models/track.dart`: Added `source` field
+  - `lib/models/track.g.dart`: Updated for `source` field
+  - `lib/providers/track_provider.dart`: Added `searchExtensionId`, updated `_parseSearchTrack` with source parameter
+  - `lib/providers/extension_provider.dart`: Added `SearchBehavior.getThumbnailSize()`, `clearError()`
+  - `lib/screens/home_tab.dart`: Dynamic thumbnail size based on extension config
+  - `lib/screens/settings/extensions_page.dart`: Improved error handling
+  - `lib/services/platform_bridge.dart`: Added `upgradeExtension()`, `checkExtensionUpgrade()`, `removeExtension()`
+- **iOS Changes**:
+  - `ios/Runner/AppDelegate.swift`: Added `upgradeExtension`, `checkExtensionUpgrade` handlers
+- **Android Changes**:
+  - `android/app/src/main/kotlin/com/zarz/spotiflac/MainActivity.kt`: Already had upgrade methods
 
 ---
 
@@ -42,6 +511,8 @@
 ### Changed
 
 - **Issue Templates**: Updated version confirmation checkbox to specify "(Stable Version)"
+
+---
 
 ## [2.2.7] - 2026-01-11
 

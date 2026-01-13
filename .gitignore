@@ -13,7 +13,7 @@ Thumbs.db
 # Reference folder (development only)
 referensi/
 
-# Documentation (hosted separately)
+# Documentation (development only, published separately)
 docs/
 
 # Old spotiflac_android folder (moved to root)
@@ -53,3 +53,9 @@ ios/.symlinks/
 ios/Flutter/Flutter.framework/
 ios/Flutter/Flutter.podspec
 android/app/libs/gobackend-sources.jar
+
+# Extension folder
+extension/
+
+# Agent instructions
+AGENTS.md

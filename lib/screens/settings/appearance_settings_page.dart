@@ -15,27 +15,27 @@ class AppearanceSettingsPage extends ConsumerWidget {
     final topPadding = MediaQuery.of(context).padding.top;
 
     return PopScope(
-      canPop: true,
+      canPop: true, // Always allow back gesture
       child: Scaffold(
         body: CustomScrollView(
           slivers: [
             // Collapsing App Bar with back button
             SliverAppBar(
-              expandedHeight: 120 + topPadding,
-              collapsedHeight: kToolbarHeight,
-              floating: false,
-              pinned: true,
-              backgroundColor: colorScheme.surface,
-              surfaceTintColor: Colors.transparent,
-              leading: IconButton(
-                icon: const Icon(Icons.arrow_back),
-                onPressed: () => Navigator.pop(context),
-              ),
-              flexibleSpace: _AppBarTitle(
-                title: 'Appearance',
-                topPadding: topPadding,
-              ),
+            expandedHeight: 120 + topPadding,
+            collapsedHeight: kToolbarHeight,
+            floating: false,
+            pinned: true,
+            backgroundColor: colorScheme.surface,
+            surfaceTintColor: Colors.transparent,
+            leading: IconButton(
+              icon: const Icon(Icons.arrow_back),
+              onPressed: () => Navigator.pop(context),
             ),
+            flexibleSpace: _AppBarTitle(
+              title: 'Appearance',
+              topPadding: topPadding,
+            ),
+          ),
 
             // Preview Section
             SliverToBoxAdapter(

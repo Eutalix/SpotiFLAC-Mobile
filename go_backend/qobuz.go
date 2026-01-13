@@ -12,6 +12,7 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
+	"time"
 )
 
 // QobuzDownloader handles Qobuz downloads
@@ -63,24 +64,27 @@ func qobuzArtistsMatch(expectedArtist, foundArtist string) bool {
 		return true
 	}
 
-	// Check first artist (before comma or feat)
-	expectedFirst := strings.Split(normExpected, ",")[0]
-	expectedFirst = strings.Split(expectedFirst, " feat")[0]
-	expectedFirst = strings.Split(expectedFirst, " ft.")[0]
-	expectedFirst = strings.TrimSpace(expectedFirst)
+	// Split expected artists by common separators (comma, feat, ft., &, and)
+	// e.g., "RADWIMPS, Toko Miura" or "RADWIMPS feat. Toko Miura"
+	expectedArtists := qobuzSplitArtists(normExpected)
+	foundArtists := qobuzSplitArtists(normFound)
 
-	foundFirst := strings.Split(normFound, ",")[0]
-	foundFirst = strings.Split(foundFirst, " feat")[0]
-	foundFirst = strings.Split(foundFirst, " ft.")[0]
-	foundFirst = strings.TrimSpace(foundFirst)
-
-	if expectedFirst == foundFirst {
-		return true
-	}
-
-	// Check if first artist is contained in the other
-	if strings.Contains(expectedFirst, foundFirst) || strings.Contains(foundFirst, expectedFirst) {
-		return true
+	// Check if ANY expected artist matches ANY found artist
+	for _, exp := range expectedArtists {
+		for _, fnd := range foundArtists {
+			if exp == fnd {
+				return true
+			}
+			// Also check contains for partial matches
+			if strings.Contains(exp, fnd) || strings.Contains(fnd, exp) {
+				return true
+			}
+			// Check same words different order
+			if qobuzSameWordsUnordered(exp, fnd) {
+				GoLog("[Qobuz] Artist names have same words in different order: '%s' vs '%s'\n", exp, fnd)
+				return true
+			}
+		}
 	}
 
 	// If scripts are TRULY different (Latin vs CJK/Arabic/Cyrillic), assume match (transliteration)
@@ -93,6 +97,67 @@ func qobuzArtistsMatch(expectedArtist, foundArtist string) bool {
 	}
 
 	return false
+}
+
+// qobuzSplitArtists splits artist string by common separators
+func qobuzSplitArtists(artists string) []string {
+	// Replace common separators with a standard one
+	normalized := artists
+	normalized = strings.ReplaceAll(normalized, " feat. ", "|")
+	normalized = strings.ReplaceAll(normalized, " feat ", "|")
+	normalized = strings.ReplaceAll(normalized, " ft. ", "|")
+	normalized = strings.ReplaceAll(normalized, " ft ", "|")
+	normalized = strings.ReplaceAll(normalized, " & ", "|")
+	normalized = strings.ReplaceAll(normalized, " and ", "|")
+	normalized = strings.ReplaceAll(normalized, ", ", "|")
+	normalized = strings.ReplaceAll(normalized, " x ", "|")
+
+	parts := strings.Split(normalized, "|")
+	result := make([]string, 0, len(parts))
+	for _, p := range parts {
+		trimmed := strings.TrimSpace(p)
+		if trimmed != "" {
+			result = append(result, trimmed)
+		}
+	}
+	return result
+}
+
+// qobuzSameWordsUnordered checks if two strings have the same words regardless of order
+// Useful for Japanese names: "Sawano Hiroyuki" vs "Hiroyuki Sawano"
+func qobuzSameWordsUnordered(a, b string) bool {
+	wordsA := strings.Fields(a)
+	wordsB := strings.Fields(b)
+
+	// Must have same number of words
+	if len(wordsA) != len(wordsB) || len(wordsA) == 0 {
+		return false
+	}
+
+	// Sort and compare
+	sortedA := make([]string, len(wordsA))
+	sortedB := make([]string, len(wordsB))
+	copy(sortedA, wordsA)
+	copy(sortedB, wordsB)
+
+	// Simple bubble sort (usually just 2-3 words)
+	for i := 0; i < len(sortedA)-1; i++ {
+		for j := i + 1; j < len(sortedA); j++ {
+			if sortedA[i] > sortedA[j] {
+				sortedA[i], sortedA[j] = sortedA[j], sortedA[i]
+			}
+			if sortedB[i] > sortedB[j] {
+				sortedB[i], sortedB[j] = sortedB[j], sortedB[i]
+			}
+		}
+	}
+
+	for i := range sortedA {
+		if sortedA[i] != sortedB[i] {
+			return false
+		}
+	}
+	return true
 }
 
 // qobuzTitlesMatch checks if track titles are similar enough
@@ -271,14 +336,15 @@ func qobuzIsLatinScript(s string) bool {
 }
 
 // qobuzIsASCIIString checks if a string contains only ASCII characters
-func qobuzIsASCIIString(s string) bool {
-	for _, r := range s {
-		if r > 127 {
-			return false
-		}
-	}
-	return true
-}
+// Kept for potential future use
+// func qobuzIsASCIIString(s string) bool {
+// 	for _, r := range s {
+// 		if r > 127 {
+// 			return false
+// 		}
+// 	}
+// 	return true
+// }
 
 // containsQueryQobuz checks if a query already exists in the list
 func containsQueryQobuz(queries []string, query string) bool {
@@ -634,85 +700,132 @@ func (q *QobuzDownloader) SearchTrackByMetadataWithDuration(trackName, artistNam
 	return nil, fmt.Errorf("no matching track found for: %s - %s", artistName, trackName)
 }
 
-// getQobuzDownloadURLSequential requests download URL from APIs sequentially
-// Uses same URL format as PC version: /api/stream?trackId={id}&quality={quality}
-func getQobuzDownloadURLSequential(apis []string, trackID int64, quality string) (string, string, error) {
+// qobuzAPIResult holds the result from a parallel API request
+type qobuzAPIResult struct {
+	apiURL      string
+	downloadURL string
+	err         error
+	duration    time.Duration
+}
+
+// getQobuzDownloadURLParallel requests download URL from all APIs in parallel
+// "Siapa cepat dia dapat" - first successful response wins
+func getQobuzDownloadURLParallel(apis []string, trackID int64, quality string) (string, string, error) {
 	if len(apis) == 0 {
 		return "", "", fmt.Errorf("no APIs available")
 	}
 
-	client := NewHTTPClientWithTimeout(DefaultTimeout)
-	retryConfig := DefaultRetryConfig()
-	var errors []string
+	GoLog("[Qobuz] Requesting download URL from %d APIs in parallel...\n", len(apis))
 
+	resultChan := make(chan qobuzAPIResult, len(apis))
+	startTime := time.Now()
+
+	// Start all requests in parallel
 	for _, apiURL := range apis {
-		// All APIs now use same format: https://domain/api/stream?trackId={id}&quality={quality}
-		// The apiURL already includes the path, just append trackID and quality
-		reqURL := fmt.Sprintf("%s%d&quality=%s", apiURL, trackID, quality)
+		go func(api string) {
+			reqStart := time.Now()
 
-		GoLog("[Qobuz] Trying: %s\n", reqURL)
+			client := &http.Client{
+				Timeout: 15 * time.Second,
+			}
 
-		req, err := http.NewRequest("GET", reqURL, nil)
-		if err != nil {
-			errors = append(errors, BuildErrorMessage(apiURL, 0, err.Error()))
-			continue
-		}
+			reqURL := fmt.Sprintf("%s%d&quality=%s", api, trackID, quality)
 
-		resp, err := DoRequestWithRetry(client, req, retryConfig)
-		if err != nil {
-			errors = append(errors, BuildErrorMessage(apiURL, 0, err.Error()))
-			continue
-		}
+			req, err := http.NewRequest("GET", reqURL, nil)
+			if err != nil {
+				resultChan <- qobuzAPIResult{apiURL: api, err: err, duration: time.Since(reqStart)}
+				return
+			}
 
-		body, err := ReadResponseBody(resp)
-		resp.Body.Close()
-		if err != nil {
-			errors = append(errors, BuildErrorMessage(apiURL, resp.StatusCode, err.Error()))
-			continue
-		}
+			resp, err := client.Do(req)
+			if err != nil {
+				resultChan <- qobuzAPIResult{apiURL: api, err: err, duration: time.Since(reqStart)}
+				return
+			}
+			defer resp.Body.Close()
 
-		// Check if response is HTML (error page)
-		if len(body) > 0 && body[0] == '<' {
-			errors = append(errors, BuildErrorMessage(apiURL, resp.StatusCode, "received HTML instead of JSON"))
-			continue
-		}
+			if resp.StatusCode != 200 {
+				resultChan <- qobuzAPIResult{apiURL: api, err: fmt.Errorf("HTTP %d", resp.StatusCode), duration: time.Since(reqStart)}
+				return
+			}
 
-		// Check for error in JSON response
-		var errorResp struct {
-			Error string `json:"error"`
-		}
-		if json.Unmarshal(body, &errorResp) == nil && errorResp.Error != "" {
-			errors = append(errors, BuildErrorMessage(apiURL, resp.StatusCode, errorResp.Error))
-			continue
-		}
+			body, err := io.ReadAll(resp.Body)
+			if err != nil {
+				resultChan <- qobuzAPIResult{apiURL: api, err: err, duration: time.Since(reqStart)}
+				return
+			}
 
-		var result struct {
-			URL string `json:"url"`
-		}
-		if err := json.Unmarshal(body, &result); err != nil {
-			errors = append(errors, BuildErrorMessage(apiURL, resp.StatusCode, "invalid JSON: "+err.Error()))
-			continue
-		}
+			// Check if response is HTML (error page)
+			if len(body) > 0 && body[0] == '<' {
+				resultChan <- qobuzAPIResult{apiURL: api, err: fmt.Errorf("received HTML instead of JSON"), duration: time.Since(reqStart)}
+				return
+			}
 
-		if result.URL != "" {
-			GoLog("[Qobuz] Got download URL from: %s\n", apiURL)
-			return apiURL, result.URL, nil
-		}
+			// Check for error in JSON response
+			var errorResp struct {
+				Error string `json:"error"`
+			}
+			if json.Unmarshal(body, &errorResp) == nil && errorResp.Error != "" {
+				resultChan <- qobuzAPIResult{apiURL: api, err: fmt.Errorf("%s", errorResp.Error), duration: time.Since(reqStart)}
+				return
+			}
 
-		errors = append(errors, BuildErrorMessage(apiURL, resp.StatusCode, "no download URL in response"))
+			var result struct {
+				URL string `json:"url"`
+			}
+			if err := json.Unmarshal(body, &result); err != nil {
+				resultChan <- qobuzAPIResult{apiURL: api, err: fmt.Errorf("invalid JSON: %v", err), duration: time.Since(reqStart)}
+				return
+			}
+
+			if result.URL != "" {
+				resultChan <- qobuzAPIResult{apiURL: api, downloadURL: result.URL, err: nil, duration: time.Since(reqStart)}
+				return
+			}
+
+			resultChan <- qobuzAPIResult{apiURL: api, err: fmt.Errorf("no download URL in response"), duration: time.Since(reqStart)}
+		}(apiURL)
 	}
 
+	// Collect results - return first success
+	var errors []string
+
+	for i := 0; i < len(apis); i++ {
+		result := <-resultChan
+		if result.err == nil {
+			GoLog("[Qobuz] [Parallel] ✓ Got response from %s in %v\n", result.apiURL, result.duration)
+
+			// Drain remaining results to avoid goroutine leaks
+			go func(remaining int) {
+				for j := 0; j < remaining; j++ {
+					<-resultChan
+				}
+			}(len(apis) - i - 1)
+
+			GoLog("[Qobuz] [Parallel] Total time: %v (first success)\n", time.Since(startTime))
+			return result.apiURL, result.downloadURL, nil
+		}
+		errMsg := result.err.Error()
+		if len(errMsg) > 50 {
+			errMsg = errMsg[:50] + "..."
+		}
+		errors = append(errors, fmt.Sprintf("%s: %s", result.apiURL, errMsg))
+	}
+
+	GoLog("[Qobuz] [Parallel] All %d APIs failed in %v\n", len(apis), time.Since(startTime))
 	return "", "", fmt.Errorf("all %d Qobuz APIs failed. Errors: %v", len(apis), errors)
 }
 
-// GetDownloadURL gets download URL for a track - tries APIs sequentially
+// GetDownloadURL gets download URL for a track - tries ALL APIs in parallel
+// "Siapa cepat dia dapat" - first successful response wins
 func (q *QobuzDownloader) GetDownloadURL(trackID int64, quality string) (string, error) {
 	apis := q.GetAvailableAPIs()
 	if len(apis) == 0 {
 		return "", fmt.Errorf("no Qobuz API available")
 	}
 
-	_, downloadURL, err := getQobuzDownloadURLSequential(apis, trackID, quality)
+	// Use parallel approach - request from all APIs simultaneously
+	_, downloadURL, err := getQobuzDownloadURLParallel(apis, trackID, quality)
 	if err != nil {
 		return "", err
 	}

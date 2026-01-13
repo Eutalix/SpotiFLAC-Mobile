@@ -9,9 +9,19 @@ import (
 
 // Spotify image size codes (same as PC version)
 const (
-	spotifySize640 = "ab67616d0000b273" // 640x640
+	spotifySize300 = "ab67616d00001e02" // 300x300 (small)
+	spotifySize640 = "ab67616d0000b273" // 640x640 (medium)
 	spotifySizeMax = "ab67616d000082c1" // Max resolution (~2000x2000)
 )
+
+// convertSmallToMedium upgrades 300x300 cover URL to 640x640
+// Same logic as PC version for consistency
+func convertSmallToMedium(imageURL string) string {
+	if strings.Contains(imageURL, spotifySize300) {
+		return strings.Replace(imageURL, spotifySize300, spotifySize640, 1)
+	}
+	return imageURL
+}
 
 // downloadCoverToMemory downloads cover art and returns as bytes (no file creation)
 // This avoids file permission issues on Android
@@ -20,16 +30,26 @@ func downloadCoverToMemory(coverURL string, maxQuality bool) ([]byte, error) {
 		return nil, fmt.Errorf("no cover URL provided")
 	}
 
-	fmt.Printf("[Cover] Downloading cover from: %s\n", coverURL)
+	GoLog("[Cover] Original URL: %s", coverURL)
 
-	// Upgrade to max quality if requested
-	downloadURL := coverURL
+	// First upgrade small (300) to medium (640) - always do this
+	downloadURL := convertSmallToMedium(coverURL)
+	if downloadURL != coverURL {
+		GoLog("[Cover] Upgraded 300x300 → 640x640")
+	}
+
+	// Then upgrade to max quality if requested
 	if maxQuality {
-		downloadURL = upgradeToMaxQuality(coverURL)
-		if downloadURL != coverURL {
-			fmt.Printf("[Cover] Upgraded to max quality URL: %s\n", downloadURL)
+		maxURL := upgradeToMaxQuality(downloadURL)
+		if maxURL != downloadURL {
+			downloadURL = maxURL
+			GoLog("[Cover] Upgraded to max resolution (~2000x2000)")
+		} else {
+			GoLog("[Cover] Max resolution not available, using 640x640")
 		}
 	}
+
+	GoLog("[Cover] Final URL: %s", downloadURL)
 
 	client := NewHTTPClientWithTimeout(DefaultTimeout)
 
@@ -54,12 +74,25 @@ func downloadCoverToMemory(coverURL string, maxQuality bool) ([]byte, error) {
 		return nil, fmt.Errorf("failed to read cover data: %w", err)
 	}
 
-	fmt.Printf("[Cover] Downloaded %d bytes\n", len(data))
+	// Calculate approximate resolution from file size
+	// JPEG ~2000x2000 is typically 300-600KB, 640x640 is ~50-100KB
+	sizeKB := len(data) / 1024
+	var resolution string
+	if sizeKB > 200 {
+		resolution = "~2000x2000 (hi-res)"
+	} else if sizeKB > 50 {
+		resolution = "~640x640"
+	} else {
+		resolution = "~300x300"
+	}
+	GoLog("[Cover] Downloaded %d KB (%s)", sizeKB, resolution)
+
 	return data, nil
 }
 
 // upgradeToMaxQuality upgrades Spotify cover URL to maximum quality
-// Uses same logic as PC version - replaces 640x640 size code with max resolution
+// Same logic as PC version - directly replaces 640x640 size code with max resolution
+// No HEAD verification needed - Spotify CDN always serves max resolution if available
 func upgradeToMaxQuality(coverURL string) string {
 	// Spotify image URLs can be upgraded by changing the size parameter
 	// Format: https://i.scdn.co/image/ab67616d0000b273...
@@ -67,21 +100,7 @@ func upgradeToMaxQuality(coverURL string) string {
 	// ab67616d000082c1 = Max resolution (~2000x2000)
 
 	if strings.Contains(coverURL, spotifySize640) {
-		// Try max resolution first
-		maxURL := strings.Replace(coverURL, spotifySize640, spotifySizeMax, 1)
-
-		// Verify max resolution URL is available
-		client := NewHTTPClientWithTimeout(DefaultTimeout)
-		req, err := http.NewRequest("HEAD", maxURL, nil)
-		if err == nil {
-			resp, err := DoRequestWithUserAgent(client, req)
-			if err == nil {
-				resp.Body.Close()
-				if resp.StatusCode == http.StatusOK {
-					return maxURL
-				}
-			}
-		}
+		return strings.Replace(coverURL, spotifySize640, spotifySizeMax, 1)
 	}
 
 	return coverURL
@@ -93,9 +112,12 @@ func GetCoverFromSpotify(imageURL string, maxQuality bool) string {
 		return ""
 	}
 
+	// Always upgrade small to medium first
+	result := convertSmallToMedium(imageURL)
+
 	if maxQuality {
-		return upgradeToMaxQuality(imageURL)
+		result = upgradeToMaxQuality(result)
 	}
 
-	return imageURL
+	return result
 }

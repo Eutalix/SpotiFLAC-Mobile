@@ -9,6 +9,7 @@ import 'package:spotiflac_android/models/download_item.dart';
 import 'package:spotiflac_android/models/settings.dart';
 import 'package:spotiflac_android/models/track.dart';
 import 'package:spotiflac_android/providers/settings_provider.dart';
+import 'package:spotiflac_android/providers/extension_provider.dart';
 import 'package:spotiflac_android/services/platform_bridge.dart';
 import 'package:spotiflac_android/services/ffmpeg_service.dart';
 import 'package:spotiflac_android/services/notification_service.dart';
@@ -667,35 +668,64 @@ class DownloadQueueNotifier extends Notifier<DownloadQueueState> {
     state = state.copyWith(outputDir: dir);
   }
 
-  /// Build output directory based on folder organization setting
-  Future<String> _buildOutputDir(Track track, String folderOrganization) async {
+  /// Build output directory based on folder organization setting and separateSingles
+  Future<String> _buildOutputDir(Track track, String folderOrganization, {bool separateSingles = false, String albumFolderStructure = 'artist_album'}) async {
     String baseDir = state.outputDir;
 
-    if (folderOrganization == 'none') {
-      return baseDir;
+    // If separateSingles is enabled, use Albums/Singles structure
+    if (separateSingles) {
+      final isSingle = track.isSingle;
+      
+      if (isSingle) {
+        // Singles go to Singles folder (flat structure)
+        final singlesPath = '$baseDir${Platform.pathSeparator}Singles';
+        final dir = Directory(singlesPath);
+        if (!await dir.exists()) {
+          await dir.create(recursive: true);
+          _log.d('Created Singles folder: $singlesPath');
+        }
+        return singlesPath;
+      } else {
+        // Albums folder structure based on setting
+        final albumName = _sanitizeFolderName(track.albumName);
+        String albumPath;
+        
+        if (albumFolderStructure == 'album_only') {
+          // Albums/Album structure (no artist folder)
+          albumPath = '$baseDir${Platform.pathSeparator}Albums${Platform.pathSeparator}$albumName';
+        } else {
+          // Albums/Artist/Album structure (default)
+          final artistName = _sanitizeFolderName(track.albumArtist ?? track.artistName);
+          albumPath = '$baseDir${Platform.pathSeparator}Albums${Platform.pathSeparator}$artistName${Platform.pathSeparator}$albumName';
+        }
+        
+        final dir = Directory(albumPath);
+        if (!await dir.exists()) {
+          await dir.create(recursive: true);
+          _log.d('Created Album folder: $albumPath');
+        }
+        return albumPath;
+      }
     }
 
-    // Sanitize folder names (remove invalid characters)
-    String sanitize(String name) {
-      return name
-          .replaceAll(RegExp(r'[<>:"/\\|?*]'), '_')
-          .replaceAll(RegExp(r'\.+$'), '') // Remove trailing dots
-          .trim();
+    // Original folder organization logic (when separateSingles is disabled)
+    if (folderOrganization == 'none') {
+      return baseDir;
     }
 
     String subPath = '';
     switch (folderOrganization) {
       case 'artist':
-        final artistName = sanitize(track.albumArtist ?? track.artistName);
+        final artistName = _sanitizeFolderName(track.albumArtist ?? track.artistName);
         subPath = artistName;
         break;
       case 'album':
-        final albumName = sanitize(track.albumName);
+        final albumName = _sanitizeFolderName(track.albumName);
         subPath = albumName;
         break;
       case 'artist_album':
-        final artistName = sanitize(track.albumArtist ?? track.artistName);
-        final albumName = sanitize(track.albumName);
+        final artistName = _sanitizeFolderName(track.albumArtist ?? track.artistName);
+        final albumName = _sanitizeFolderName(track.albumName);
         subPath = '$artistName${Platform.pathSeparator}$albumName';
         break;
     }
@@ -711,6 +741,14 @@ class DownloadQueueNotifier extends Notifier<DownloadQueueState> {
     }
 
     return baseDir;
+  }
+
+  /// Sanitize folder names (remove invalid characters)
+  String _sanitizeFolderName(String name) {
+    return name
+        .replaceAll(RegExp(r'[<>:"/\\|?*]'), '_')
+        .replaceAll(RegExp(r'\.+$'), '') // Remove trailing dots
+        .trim();
   }
 
   void updateSettings(AppSettings settings) {
@@ -922,13 +960,92 @@ class DownloadQueueNotifier extends Notifier<DownloadQueueState> {
     _saveQueueToStorage(); // Persist queue
   }
 
+  /// Run post-processing hooks on a downloaded file
+  Future<void> _runPostProcessingHooks(String filePath, Track track) async {
+    try {
+      final settings = ref.read(settingsProvider);
+      final extensionState = ref.read(extensionProvider);
+      
+      // Check if post-processing is enabled and there are extensions with hooks
+      if (!settings.useExtensionProviders) return;
+      
+      final hasPostProcessing = extensionState.extensions.any(
+        (e) => e.enabled && e.hasPostProcessing,
+      );
+      if (!hasPostProcessing) return;
+      
+      _log.d('Running post-processing hooks on: $filePath');
+      
+      // Build metadata map for post-processing
+      final metadata = <String, dynamic>{
+        'title': track.name,
+        'artist': track.artistName,
+        'album': track.albumName,
+        'album_artist': track.albumArtist ?? track.artistName,
+        'track_number': track.trackNumber ?? 1,
+        'disc_number': track.discNumber ?? 1,
+        'isrc': track.isrc ?? '',
+        'release_date': track.releaseDate ?? '',
+        'duration_ms': track.duration * 1000,
+        'cover_url': track.coverUrl ?? '',
+      };
+      
+      final result = await PlatformBridge.runPostProcessing(filePath, metadata: metadata);
+      
+      if (result['success'] == true) {
+        final hooksRun = result['hooks_run'] as int? ?? 0;
+        final newPath = result['file_path'] as String?;
+        _log.i('Post-processing completed: $hooksRun hook(s) executed');
+        
+        if (newPath != null && newPath != filePath) {
+          _log.d('File path changed by post-processing: $newPath');
+        }
+      } else {
+        final error = result['error'] as String? ?? 'Unknown error';
+        _log.w('Post-processing failed: $error');
+      }
+    } catch (e) {
+      _log.w('Post-processing error: $e');
+      // Don't fail the download if post-processing fails
+    }
+  }
+
+  /// Upgrade Spotify cover URL to max quality (~2000x2000)
+  /// Same logic as Go backend cover.go
+  String _upgradeToMaxQualityCover(String coverUrl) {
+    const spotifySize300 = 'ab67616d00001e02'; // 300x300 (small)
+    const spotifySize640 = 'ab67616d0000b273'; // 640x640 (medium)
+    const spotifySizeMax = 'ab67616d000082c1'; // Max resolution (~2000x2000)
+    
+    // First upgrade small (300) to medium (640)
+    var result = coverUrl;
+    if (result.contains(spotifySize300)) {
+      result = result.replaceFirst(spotifySize300, spotifySize640);
+    }
+    
+    // Then upgrade medium (640) to max
+    if (result.contains(spotifySize640)) {
+      result = result.replaceFirst(spotifySize640, spotifySizeMax);
+    }
+    
+    return result;
+  }
+
   /// Embed metadata and cover to a FLAC file after M4A conversion
   Future<void> _embedMetadataAndCover(String flacPath, Track track) async {
+    final settings = ref.read(settingsProvider);
+    
     // Download cover first
     String? coverPath;
-    final coverUrl = track.coverUrl;
+    var coverUrl = track.coverUrl;
     if (coverUrl != null && coverUrl.isNotEmpty) {
       try {
+        // Upgrade cover URL to max quality if setting is enabled
+        if (settings.maxQualityCover) {
+          coverUrl = _upgradeToMaxQualityCover(coverUrl);
+          _log.d('Cover URL upgraded to max quality: $coverUrl');
+        }
+        
         final tempDir = await getTemporaryDirectory();
         final uniqueId =
             '${DateTime.now().millisecondsSinceEpoch}_${Random().nextInt(10000)}';
@@ -1366,6 +1483,8 @@ class DownloadQueueNotifier extends Notifier<DownloadQueueState> {
       final outputDir = await _buildOutputDir(
         trackToDownload,
         settings.folderOrganization,
+        separateSingles: settings.separateSingles,
+        albumFolderStructure: settings.albumFolderStructure,
       );
 
       // Use quality override if set, otherwise use default from settings
@@ -1373,7 +1492,37 @@ class DownloadQueueNotifier extends Notifier<DownloadQueueState> {
 
       Map<String, dynamic> result;
 
-      if (state.autoFallback) {
+      // Check if extension providers should be used
+      final extensionState = ref.read(extensionProvider);
+      final hasActiveExtensions = extensionState.extensions.any((e) => e.enabled);
+      final useExtensions = settings.useExtensionProviders && hasActiveExtensions;
+
+      if (useExtensions) {
+        // Use extension providers (includes fallback to built-in services)
+        _log.d('Using extension providers for download');
+        _log.d(
+          'Quality: $quality${item.qualityOverride != null ? ' (override)' : ''}',
+        );
+        _log.d('Output dir: $outputDir');
+        result = await PlatformBridge.downloadWithExtensions(
+          isrc: trackToDownload.isrc ?? '',
+          spotifyId: trackToDownload.id,
+          trackName: trackToDownload.name,
+          artistName: trackToDownload.artistName,
+          albumName: trackToDownload.albumName,
+          albumArtist: trackToDownload.albumArtist,
+          coverUrl: trackToDownload.coverUrl,
+          outputDir: outputDir,
+          filenameFormat: state.filenameFormat,
+          quality: quality,
+          trackNumber: trackToDownload.trackNumber ?? 1,
+          discNumber: trackToDownload.discNumber ?? 1,
+          releaseDate: trackToDownload.releaseDate,
+          itemId: item.id,
+          durationMs: trackToDownload.duration,
+          source: trackToDownload.source, // Pass extension ID that provided this track
+        );
+      } else if (state.autoFallback) {
         _log.d('Using auto-fallback mode');
         _log.d(
           'Quality: $quality${item.qualityOverride != null ? ' (override)' : ''}',
@@ -1447,6 +1596,12 @@ class DownloadQueueNotifier extends Notifier<DownloadQueueState> {
 
       if (result['success'] == true) {
         var filePath = result['file_path'] as String?;
+        
+        // Strip EXISTS: prefix from duplicate detection
+        if (filePath != null && filePath.startsWith('EXISTS:')) {
+          filePath = filePath.substring(7); // Remove "EXISTS:" prefix
+        }
+        
         _log.i('Download success, file: $filePath');
 
         // Get actual quality from response (if available)
@@ -1592,6 +1747,11 @@ class DownloadQueueNotifier extends Notifier<DownloadQueueState> {
           progress: 1.0,
           filePath: filePath,
         );
+
+        // Run post-processing hooks if enabled
+        if (filePath != null) {
+          await _runPostProcessingHooks(filePath, trackToDownload);
+        }
 
         // Increment completed counter
         _completedInSession++;

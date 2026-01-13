@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:spotiflac_android/models/settings.dart';
 import 'package:spotiflac_android/providers/download_queue_provider.dart';
 import 'package:spotiflac_android/providers/settings_provider.dart';
+import 'package:spotiflac_android/providers/extension_provider.dart';
 import 'package:spotiflac_android/widgets/settings_group.dart';
 
 class OptionsSettingsPage extends ConsumerWidget {
@@ -11,53 +12,55 @@ class OptionsSettingsPage extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final settings = ref.watch(settingsProvider);
+    final extensionState = ref.watch(extensionProvider);
+    final hasExtensions = extensionState.extensions.isNotEmpty;
     final colorScheme = Theme.of(context).colorScheme;
     final topPadding = MediaQuery.of(context).padding.top;
 
     return PopScope(
-      canPop: true,
+      canPop: true, // Always allow back gesture
       child: Scaffold(
         body: CustomScrollView(
           slivers: [
             // Collapsing App Bar with back button
             SliverAppBar(
-              expandedHeight: 120 + topPadding,
-              collapsedHeight: kToolbarHeight,
-              floating: false,
-              pinned: true,
-              backgroundColor: colorScheme.surface,
-              surfaceTintColor: Colors.transparent,
-              leading: IconButton(
-                icon: const Icon(Icons.arrow_back),
-                onPressed: () => Navigator.pop(context),
-              ),
-              flexibleSpace: LayoutBuilder(
-                builder: (context, constraints) {
-                  final maxHeight = 120 + topPadding;
-                  final minHeight = kToolbarHeight + topPadding;
-                  final expandRatio =
-                      ((constraints.maxHeight - minHeight) /
-                              (maxHeight - minHeight))
-                          .clamp(0.0, 1.0);
-                  final leftPadding = 56 - (32 * expandRatio); // 56 -> 24
-                  return FlexibleSpaceBar(
-                    expandedTitleScale: 1.0,
-                    titlePadding: EdgeInsets.only(
-                      left: leftPadding,
-                      bottom: 16,
-                    ),
-                    title: Text(
-                      'Options',
-                      style: TextStyle(
-                        fontSize: 20 + (8 * expandRatio), // 20 -> 28
-                        fontWeight: FontWeight.bold,
-                        color: colorScheme.onSurface,
-                      ),
-                    ),
-                  );
-                },
-              ),
+            expandedHeight: 120 + topPadding,
+            collapsedHeight: kToolbarHeight,
+            floating: false,
+            pinned: true,
+            backgroundColor: colorScheme.surface,
+            surfaceTintColor: Colors.transparent,
+            leading: IconButton(
+              icon: const Icon(Icons.arrow_back),
+              onPressed: () => Navigator.pop(context),
             ),
+            flexibleSpace: LayoutBuilder(
+              builder: (context, constraints) {
+                final maxHeight = 120 + topPadding;
+                final minHeight = kToolbarHeight + topPadding;
+                final expandRatio =
+                    ((constraints.maxHeight - minHeight) /
+                            (maxHeight - minHeight))
+                        .clamp(0.0, 1.0);
+                final leftPadding = 56 - (32 * expandRatio); // 56 -> 24
+                return FlexibleSpaceBar(
+                  expandedTitleScale: 1.0,
+                  titlePadding: EdgeInsets.only(
+                    left: leftPadding,
+                    bottom: 16,
+                  ),
+                  title: Text(
+                    'Options',
+                    style: TextStyle(
+                      fontSize: 20 + (8 * expandRatio), // 20 -> 28
+                      fontWeight: FontWeight.bold,
+                      color: colorScheme.onSurface,
+                    ),
+                  ),
+                );
+              },
+            ),
+          ),
 
             // Search Source section
             const SliverToBoxAdapter(
@@ -73,38 +76,50 @@ class OptionsSettingsPage extends ConsumerWidget {
                         .setMetadataSource(v),
                   ),
                   if (settings.metadataSource == 'spotify') ...[
-                    SettingsSwitchItem(
-                      icon: Icons.toggle_on,
-                      title: 'Use Custom Credentials',
-                      subtitle: settings.useCustomSpotifyCredentials
-                          ? 'Using your credentials'
-                          : 'Using default credentials',
-                      value: settings.useCustomSpotifyCredentials,
-                      onChanged: (v) {
-                        ref
-                            .read(settingsProvider.notifier)
-                            .setUseCustomSpotifyCredentials(v);
-                        if (v && settings.spotifyClientId.isEmpty) {
-                          _showSpotifyCredentialsDialog(context, ref, settings);
-                        }
-                      },
-                      showDivider: true,
-                    ),
+                    // Info card about Spotify credentials requirement
+                    if (settings.spotifyClientId.isEmpty)
+                      Padding(
+                        padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
+                        child: Card(
+                          color: Theme.of(context).colorScheme.errorContainer,
+                          child: Padding(
+                            padding: const EdgeInsets.all(12),
+                            child: Row(
+                              children: [
+                                Icon(
+                                  Icons.warning_amber_rounded,
+                                  color: Theme.of(context).colorScheme.onErrorContainer,
+                                ),
+                                const SizedBox(width: 12),
+                                Expanded(
+                                  child: Text(
+                                    'Spotify requires your own API credentials. Get them free from developer.spotify.com',
+                                    style: TextStyle(
+                                      color: Theme.of(context).colorScheme.onErrorContainer,
+                                      fontSize: 12,
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                      ),
                     SettingsItem(
                       icon: Icons.key,
-                      title: 'Set Credentials',
+                      title: 'Spotify Credentials',
                       subtitle: settings.spotifyClientId.isNotEmpty
                           ? 'Client ID: ${settings.spotifyClientId.length > 8 ? '${settings.spotifyClientId.substring(0, 8)}...' : settings.spotifyClientId}'
-                          : 'Not configured',
+                          : 'Required - tap to configure',
                       onTap: () =>
                           _showSpotifyCredentialsDialog(context, ref, settings),
                       trailing: Icon(
                         settings.spotifyClientId.isNotEmpty
-                            ? Icons.edit
-                            : Icons.add,
+                            ? Icons.check_circle
+                            : Icons.error_outline,
                         color: settings.spotifyClientId.isNotEmpty
-                            ? Theme.of(context).colorScheme.onSurfaceVariant
-                            : Theme.of(context).colorScheme.primary,
+                            ? Theme.of(context).colorScheme.primary
+                            : Theme.of(context).colorScheme.error,
                         size: 20,
                       ),
                       showDivider: false,
@@ -129,6 +144,18 @@ class OptionsSettingsPage extends ConsumerWidget {
                     onChanged: (v) =>
                         ref.read(settingsProvider.notifier).setAutoFallback(v),
                   ),
+                  if (hasExtensions)
+                    SettingsSwitchItem(
+                      icon: Icons.extension,
+                      title: 'Use Extension Providers',
+                      subtitle: settings.useExtensionProviders
+                          ? 'Extensions will be tried first'
+                          : 'Using built-in providers only',
+                      value: settings.useExtensionProviders,
+                      onChanged: (v) => ref
+                          .read(settingsProvider.notifier)
+                          .setUseExtensionProviders(v),
+                    ),
                   SettingsSwitchItem(
                     icon: Icons.lyrics,
                     title: 'Embed Lyrics',
@@ -175,6 +202,15 @@ class OptionsSettingsPage extends ConsumerWidget {
             SliverToBoxAdapter(
               child: SettingsGroup(
                 children: [
+                  SettingsSwitchItem(
+                    icon: Icons.store,
+                    title: 'Extension Store',
+                    subtitle: 'Show Store tab in navigation',
+                    value: settings.showExtensionStore,
+                    onChanged: (v) => ref
+                        .read(settingsProvider.notifier)
+                        .setShowExtensionStore(v),
+                  ),
                   SettingsSwitchItem(
                     icon: Icons.system_update,
                     title: 'Check for Updates',
@@ -345,11 +381,15 @@ class OptionsSettingsPage extends ConsumerWidget {
                       ),
                       border: OutlineInputBorder(
                         borderRadius: BorderRadius.circular(16),
-                        borderSide: BorderSide.none,
+                        borderSide: BorderSide(
+                          color: colorScheme.outlineVariant,
+                        ),
                       ),
                       enabledBorder: OutlineInputBorder(
                         borderRadius: BorderRadius.circular(16),
-                        borderSide: BorderSide.none,
+                        borderSide: BorderSide(
+                          color: colorScheme.outlineVariant,
+                        ),
                       ),
                       focusedBorder: OutlineInputBorder(
                         borderRadius: BorderRadius.circular(16),
@@ -380,11 +420,15 @@ class OptionsSettingsPage extends ConsumerWidget {
                       ),
                       border: OutlineInputBorder(
                         borderRadius: BorderRadius.circular(16),
-                        borderSide: BorderSide.none,
+                        borderSide: BorderSide(
+                          color: colorScheme.outlineVariant,
+                        ),
                       ),
                       enabledBorder: OutlineInputBorder(
                         borderRadius: BorderRadius.circular(16),
-                        borderSide: BorderSide.none,
+                        borderSide: BorderSide(
+                          color: colorScheme.outlineVariant,
+                        ),
                       ),
                       focusedBorder: OutlineInputBorder(
                         borderRadius: BorderRadius.circular(16),
@@ -745,7 +789,7 @@ class _ChannelChip extends StatelessWidget {
   }
 }
 
-class _MetadataSourceSelector extends StatelessWidget {
+class _MetadataSourceSelector extends ConsumerWidget {
   final String currentSource;
   final ValueChanged<String> onChanged;
   const _MetadataSourceSelector({
@@ -754,8 +798,25 @@ class _MetadataSourceSelector extends StatelessWidget {
   });
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     final colorScheme = Theme.of(context).colorScheme;
+    final settings = ref.watch(settingsProvider);
+    final extState = ref.watch(extensionProvider);
+    
+    // Check if extension search provider is active AND enabled
+    Extension? activeExtension;
+    if (settings.searchProvider != null && settings.searchProvider!.isNotEmpty) {
+      activeExtension = extState.extensions
+          .where((e) => e.id == settings.searchProvider && e.enabled)
+          .firstOrNull;
+    }
+    final hasExtensionSearch = activeExtension != null;
+    
+    String? extensionName;
+    if (hasExtensionSearch) {
+      extensionName = activeExtension.displayName;
+    }
+    
     return Padding(
       padding: const EdgeInsets.all(16),
       child: Column(
@@ -769,9 +830,13 @@ class _MetadataSourceSelector extends StatelessWidget {
           ),
           const SizedBox(height: 4),
           Text(
-            'Service used when searching by track name.',
+            hasExtensionSearch
+                ? 'Using extension: $extensionName'
+                : 'Service used when searching by track name.',
             style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-              color: colorScheme.onSurfaceVariant,
+              color: hasExtensionSearch 
+                  ? colorScheme.primary 
+                  : colorScheme.onSurfaceVariant,
             ),
           ),
           const SizedBox(height: 16),
@@ -780,18 +845,53 @@ class _MetadataSourceSelector extends StatelessWidget {
               _SourceChip(
                 icon: Icons.graphic_eq,
                 label: 'Deezer',
-                isSelected: currentSource == 'deezer',
-                onTap: () => onChanged('deezer'),
+                // Not selected if extension is active
+                isSelected: currentSource == 'deezer' && !hasExtensionSearch,
+                onTap: () {
+                  // If extension was active, reset it to default
+                  if (hasExtensionSearch) {
+                    ref.read(settingsProvider.notifier).setSearchProvider(null);
+                  }
+                  onChanged('deezer');
+                },
               ),
               const SizedBox(width: 12),
               _SourceChip(
                 icon: Icons.music_note,
                 label: 'Spotify',
-                isSelected: currentSource == 'spotify',
-                onTap: () => onChanged('spotify'),
+                // Not selected if extension is active
+                isSelected: currentSource == 'spotify' && !hasExtensionSearch,
+                onTap: () {
+                  // If extension was active, reset it to default
+                  if (hasExtensionSearch) {
+                    ref.read(settingsProvider.notifier).setSearchProvider(null);
+                  }
+                  onChanged('spotify');
+                },
               ),
             ],
           ),
+          if (hasExtensionSearch) ...[
+            const SizedBox(height: 12),
+            Row(
+              children: [
+                Icon(
+                  Icons.info_outline,
+                  size: 16,
+                  color: colorScheme.onSurfaceVariant,
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    'Tap Deezer or Spotify to switch back from extension',
+                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                      color: colorScheme.onSurfaceVariant,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ],
         ],
       ),
     );
@@ -802,13 +902,17 @@ class _SourceChip extends StatelessWidget {
   final IconData icon;
   final String label;
   final bool isSelected;
-  final VoidCallback onTap;
+  final VoidCallback? onTap;
+  final String? badge;
+  final Color? badgeColor;
 
   const _SourceChip({
     required this.icon,
     required this.label,
     required this.isSelected,
-    required this.onTap,
+    this.onTap,
+    this.badge,
+    this.badgeColor,
   });
 
   @override
@@ -854,6 +958,24 @@ class _SourceChip extends StatelessWidget {
                         : colorScheme.onSurfaceVariant,
                   ),
                 ),
+                if (badge != null) ...[
+                  const SizedBox(height: 4),
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                    decoration: BoxDecoration(
+                      color: (badgeColor ?? colorScheme.tertiary).withValues(alpha: 0.2),
+                      borderRadius: BorderRadius.circular(4),
+                    ),
+                    child: Text(
+                      badge!,
+                      style: TextStyle(
+                        fontSize: 9,
+                        fontWeight: FontWeight.w500,
+                        color: badgeColor ?? colorScheme.tertiary,
+                      ),
+                    ),
+                  ),
+                ],
               ],
             ),
           ),

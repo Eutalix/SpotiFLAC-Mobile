@@ -345,27 +345,28 @@ func (t *TidalDownloader) SearchTrackByISRC(isrc string) (*TidalTrack, error) {
 	return nil, fmt.Errorf("no exact ISRC match found for: %s", isrc)
 }
 
-// normalizeTitle normalizes a track title for comparison (kept for potential future use)
-func normalizeTitle(title string) string {
-	normalized := strings.ToLower(strings.TrimSpace(title))
-
-	// Remove common suffixes in parentheses or brackets
-	suffixPatterns := []string{
-		" (remaster)", " (remastered)", " (deluxe)", " (deluxe edition)",
-		" (bonus track)", " (single)", " (album version)", " (radio edit)",
-		" [remaster]", " [remastered]", " [deluxe]", " [bonus track]",
-	}
-	for _, suffix := range suffixPatterns {
-		normalized = strings.TrimSuffix(normalized, suffix)
-	}
-
-	// Remove multiple spaces
-	for strings.Contains(normalized, "  ") {
-		normalized = strings.ReplaceAll(normalized, "  ", " ")
-	}
-
-	return normalized
-}
+// normalizeTitle normalizes a track title for comparison
+// Kept for potential future use
+// func normalizeTitle(title string) string {
+// 	normalized := strings.ToLower(strings.TrimSpace(title))
+//
+// 	// Remove common suffixes in parentheses or brackets
+// 	suffixPatterns := []string{
+// 		" (remaster)", " (remastered)", " (deluxe)", " (deluxe edition)",
+// 		" (bonus track)", " (single)", " (album version)", " (radio edit)",
+// 		" [remaster]", " [remastered]", " [deluxe]", " [bonus track]",
+// 	}
+// 	for _, suffix := range suffixPatterns {
+// 		normalized = strings.TrimSuffix(normalized, suffix)
+// 	}
+//
+// 	// Remove multiple spaces
+// 	for strings.Contains(normalized, "  ") {
+// 		normalized = strings.ReplaceAll(normalized, "  ", " ")
+// 	}
+//
+// 	return normalized
+// }
 
 // SearchTrackByMetadataWithISRC searches for a track with ISRC matching priority
 // Now includes romaji conversion for Japanese text (4 search strategies like PC)
@@ -648,6 +649,7 @@ type tidalAPIResult struct {
 
 // getDownloadURLParallel requests download URL from all APIs in parallel
 // Returns the first successful result (supports both v1 and v2 API formats)
+// "Siapa cepat dia dapat" - first success wins
 func getDownloadURLParallel(apis []string, trackID int64, quality string) (string, TidalDownloadInfo, error) {
 	if len(apis) == 0 {
 		return "", TidalDownloadInfo{}, fmt.Errorf("no APIs available")
@@ -663,38 +665,33 @@ func getDownloadURLParallel(apis []string, trackID int64, quality string) (strin
 		go func(api string) {
 			reqStart := time.Now()
 
-			// Create client with longer timeout for parallel requests
+			// Create client with timeout for parallel requests
 			client := &http.Client{
 				Timeout: 15 * time.Second,
 			}
 
 			reqURL := fmt.Sprintf("%s/track/?id=%d&quality=%s", api, trackID, quality)
-			GoLog("[Tidal] [Parallel] Starting request to: %s\n", api)
 
 			req, err := http.NewRequest("GET", reqURL, nil)
 			if err != nil {
-				GoLog("[Tidal] [Parallel] %s - Failed to create request: %v\n", api, err)
 				resultChan <- tidalAPIResult{apiURL: api, err: err, duration: time.Since(reqStart)}
 				return
 			}
 
 			resp, err := client.Do(req)
 			if err != nil {
-				GoLog("[Tidal] [Parallel] %s - Request failed: %v\n", api, err)
 				resultChan <- tidalAPIResult{apiURL: api, err: err, duration: time.Since(reqStart)}
 				return
 			}
 			defer resp.Body.Close()
 
 			if resp.StatusCode != 200 {
-				GoLog("[Tidal] [Parallel] %s - HTTP %d\n", api, resp.StatusCode)
 				resultChan <- tidalAPIResult{apiURL: api, err: fmt.Errorf("HTTP %d", resp.StatusCode), duration: time.Since(reqStart)}
 				return
 			}
 
 			body, err := io.ReadAll(resp.Body)
 			if err != nil {
-				GoLog("[Tidal] [Parallel] %s - Failed to read body: %v\n", api, err)
 				resultChan <- tidalAPIResult{apiURL: api, err: err, duration: time.Since(reqStart)}
 				return
 			}
@@ -704,13 +701,9 @@ func getDownloadURLParallel(apis []string, trackID int64, quality string) (strin
 			if err := json.Unmarshal(body, &v2Response); err == nil && v2Response.Data.Manifest != "" {
 				// IMPORTANT: Reject PREVIEW responses - we need FULL tracks
 				if v2Response.Data.AssetPresentation == "PREVIEW" {
-					GoLog("[Tidal] [Parallel] %s - Rejecting PREVIEW response\n", api)
 					resultChan <- tidalAPIResult{apiURL: api, err: fmt.Errorf("returned PREVIEW instead of FULL"), duration: time.Since(reqStart)}
 					return
 				}
-
-				GoLog("[Tidal] [Parallel] %s - Got FULL track (v2): %d-bit/%dHz in %v\n",
-					api, v2Response.Data.BitDepth, v2Response.Data.SampleRate, time.Since(reqStart))
 
 				info := TidalDownloadInfo{
 					URL:        "MANIFEST:" + v2Response.Data.Manifest,
@@ -728,7 +721,6 @@ func getDownloadURLParallel(apis []string, trackID int64, quality string) (strin
 			if err := json.Unmarshal(body, &v1Responses); err == nil {
 				for _, item := range v1Responses {
 					if item.OriginalTrackURL != "" {
-						GoLog("[Tidal] [Parallel] %s - Got direct URL (v1) in %v\n", api, time.Since(reqStart))
 						info := TidalDownloadInfo{
 							URL:        item.OriginalTrackURL,
 							BitDepth:   16,
@@ -740,148 +732,51 @@ func getDownloadURLParallel(apis []string, trackID int64, quality string) (strin
 				}
 			}
 
-			GoLog("[Tidal] [Parallel] %s - No download URL in response\n", api)
 			resultChan <- tidalAPIResult{apiURL: api, err: fmt.Errorf("no download URL or manifest in response"), duration: time.Since(reqStart)}
 		}(apiURL)
 	}
 
 	// Collect results - return first success
 	var errors []string
-	successCount := 0
-	failCount := 0
 
 	for i := 0; i < len(apis); i++ {
 		result := <-resultChan
 		if result.err == nil {
-			successCount++
-			if successCount == 1 {
-				// First success - use this one
-				GoLog("[Tidal] [Parallel] ✓ Using response from %s (took %v, total %v)\n",
-					result.apiURL, result.duration, time.Since(startTime))
+			// First success - use this one
+			GoLog("[Tidal] [Parallel] ✓ Got response from %s (%d-bit/%dHz) in %v\n",
+				result.apiURL, result.info.BitDepth, result.info.SampleRate, result.duration)
 
-				// Don't return immediately - let other goroutines finish to avoid leaks
-				// But we'll use this result
-				go func() {
-					// Drain remaining results
-					for j := i + 1; j < len(apis); j++ {
-						<-resultChan
-					}
-				}()
+			// Don't return immediately - drain remaining results to avoid goroutine leaks
+			go func(remaining int) {
+				for j := 0; j < remaining; j++ {
+					<-resultChan
+				}
+			}(len(apis) - i - 1)
 
-				return result.apiURL, result.info, nil
-			}
-		} else {
-			failCount++
-			errMsg := result.err.Error()
-			if len(errMsg) > 50 {
-				errMsg = errMsg[:50] + "..."
-			}
-			errors = append(errors, fmt.Sprintf("%s: %s", result.apiURL, errMsg))
-			GoLog("[Tidal] [Parallel] ✗ %s failed: %s (took %v)\n", result.apiURL, errMsg, result.duration)
+			GoLog("[Tidal] [Parallel] Total time: %v (first success)\n", time.Since(startTime))
+			return result.apiURL, result.info, nil
 		}
+		errMsg := result.err.Error()
+		if len(errMsg) > 50 {
+			errMsg = errMsg[:50] + "..."
+		}
+		errors = append(errors, fmt.Sprintf("%s: %s", result.apiURL, errMsg))
 	}
 
 	GoLog("[Tidal] [Parallel] All %d APIs failed in %v\n", len(apis), time.Since(startTime))
 	return "", TidalDownloadInfo{}, fmt.Errorf("all %d Tidal APIs failed. Errors: %v", len(apis), errors)
 }
 
-// getDownloadURLSequential requests download URL from APIs sequentially (fallback)
-// Returns the first successful result (supports both v1 and v2 API formats)
-func getDownloadURLSequential(apis []string, trackID int64, quality string) (string, TidalDownloadInfo, error) {
-	if len(apis) == 0 {
-		return "", TidalDownloadInfo{}, fmt.Errorf("no APIs available")
-	}
-
-	client := NewHTTPClientWithTimeout(DefaultTimeout)
-	retryConfig := DefaultRetryConfig()
-	var errors []string
-
-	for _, apiURL := range apis {
-		reqURL := fmt.Sprintf("%s/track/?id=%d&quality=%s", apiURL, trackID, quality)
-		GoLog("[Tidal] Trying API: %s\n", reqURL)
-
-		req, err := http.NewRequest("GET", reqURL, nil)
-		if err != nil {
-			errors = append(errors, BuildErrorMessage(apiURL, 0, err.Error()))
-			continue
-		}
-
-		resp, err := DoRequestWithRetry(client, req, retryConfig)
-		if err != nil {
-			GoLog("[Tidal] API error: %v\n", err)
-			errors = append(errors, BuildErrorMessage(apiURL, 0, err.Error()))
-			continue
-		}
-
-		body, err := ReadResponseBody(resp)
-		resp.Body.Close()
-		if err != nil {
-			GoLog("[Tidal] Read body error: %v\n", err)
-			errors = append(errors, BuildErrorMessage(apiURL, resp.StatusCode, err.Error()))
-			continue
-		}
-
-		// Log response preview
-		bodyPreview := string(body)
-		if len(bodyPreview) > 300 {
-			bodyPreview = bodyPreview[:300] + "..."
-		}
-		GoLog("[Tidal] API response (HTTP %d): %s\n", resp.StatusCode, bodyPreview)
-
-		// Try v2 format first (object with manifest)
-		var v2Response TidalAPIResponseV2
-		if err := json.Unmarshal(body, &v2Response); err == nil && v2Response.Data.Manifest != "" {
-			GoLog("[Tidal] Got v2 response from %s - Quality: %d-bit/%dHz, AssetPresentation: %s\n",
-				apiURL, v2Response.Data.BitDepth, v2Response.Data.SampleRate, v2Response.Data.AssetPresentation)
-
-			// IMPORTANT: Reject PREVIEW responses - we need FULL tracks
-			if v2Response.Data.AssetPresentation == "PREVIEW" {
-				GoLog("[Tidal] ✗ Rejecting PREVIEW response from %s, trying next API...\n", apiURL)
-				errors = append(errors, BuildErrorMessage(apiURL, resp.StatusCode, "returned PREVIEW instead of FULL"))
-				continue
-			}
-
-			GoLog("[Tidal] ✓ Got FULL track from %s\n", apiURL)
-			info := TidalDownloadInfo{
-				URL:        "MANIFEST:" + v2Response.Data.Manifest,
-				BitDepth:   v2Response.Data.BitDepth,
-				SampleRate: v2Response.Data.SampleRate,
-			}
-			return apiURL, info, nil
-		}
-
-		// Fallback to v1 format (array with OriginalTrackUrl)
-		var v1Responses []struct {
-			OriginalTrackURL string `json:"OriginalTrackUrl"`
-		}
-		if err := json.Unmarshal(body, &v1Responses); err == nil {
-			for _, item := range v1Responses {
-				if item.OriginalTrackURL != "" {
-					// v1 format doesn't have quality info, assume 16-bit/44.1kHz
-					info := TidalDownloadInfo{
-						URL:        item.OriginalTrackURL,
-						BitDepth:   16,
-						SampleRate: 44100,
-					}
-					return apiURL, info, nil
-				}
-			}
-		}
-
-		errors = append(errors, BuildErrorMessage(apiURL, resp.StatusCode, "no download URL or manifest in response"))
-	}
-
-	return "", TidalDownloadInfo{}, fmt.Errorf("all %d Tidal APIs failed. Errors: %v", len(apis), errors)
-}
-
-// GetDownloadURL gets download URL for a track - tries APIs sequentially
+// GetDownloadURL gets download URL for a track - tries ALL APIs in parallel
+// "Siapa cepat dia dapat" - first successful response wins
 func (t *TidalDownloader) GetDownloadURL(trackID int64, quality string) (TidalDownloadInfo, error) {
 	apis := t.GetAvailableAPIs()
 	if len(apis) == 0 {
 		return TidalDownloadInfo{}, fmt.Errorf("no API URL configured")
 	}
 
-	_, info, err := getDownloadURLSequential(apis, trackID, quality)
+	// Use parallel approach - request from all APIs simultaneously
+	_, info, err := getDownloadURLParallel(apis, trackID, quality)
 	if err != nil {
 		return TidalDownloadInfo{}, fmt.Errorf("failed to get download URL: %w", err)
 	}
@@ -1266,24 +1161,27 @@ func artistsMatch(spotifyArtist, tidalArtist string) bool {
 		return true
 	}
 
-	// Check first artist (before comma or feat)
-	spotifyFirst := strings.Split(normSpotify, ",")[0]
-	spotifyFirst = strings.Split(spotifyFirst, " feat")[0]
-	spotifyFirst = strings.Split(spotifyFirst, " ft.")[0]
-	spotifyFirst = strings.TrimSpace(spotifyFirst)
+	// Split artists by common separators (comma, feat, ft., &, and)
+	// e.g., "RADWIMPS, Toko Miura" or "RADWIMPS feat. Toko Miura"
+	spotifyArtists := splitArtists(normSpotify)
+	tidalArtists := splitArtists(normTidal)
 
-	tidalFirst := strings.Split(normTidal, ",")[0]
-	tidalFirst = strings.Split(tidalFirst, " feat")[0]
-	tidalFirst = strings.Split(tidalFirst, " ft.")[0]
-	tidalFirst = strings.TrimSpace(tidalFirst)
-
-	if spotifyFirst == tidalFirst {
-		return true
-	}
-
-	// Check if first artist is contained in the other
-	if strings.Contains(spotifyFirst, tidalFirst) || strings.Contains(tidalFirst, spotifyFirst) {
-		return true
+	// Check if ANY expected artist matches ANY found artist
+	for _, exp := range spotifyArtists {
+		for _, fnd := range tidalArtists {
+			if exp == fnd {
+				return true
+			}
+			// Also check contains for partial matches
+			if strings.Contains(exp, fnd) || strings.Contains(fnd, exp) {
+				return true
+			}
+			// Check same words different order
+			if sameWordsUnordered(exp, fnd) {
+				GoLog("[Tidal] Artist names have same words in different order: '%s' vs '%s'\n", exp, fnd)
+				return true
+			}
+		}
 	}
 
 	// If scripts are TRULY different (Latin vs CJK/Arabic/Cyrillic), assume match (transliteration)
@@ -1297,6 +1195,67 @@ func artistsMatch(spotifyArtist, tidalArtist string) bool {
 	}
 
 	return false
+}
+
+// splitArtists splits artist string by common separators
+func splitArtists(artists string) []string {
+	// Replace common separators with a standard one
+	normalized := artists
+	normalized = strings.ReplaceAll(normalized, " feat. ", "|")
+	normalized = strings.ReplaceAll(normalized, " feat ", "|")
+	normalized = strings.ReplaceAll(normalized, " ft. ", "|")
+	normalized = strings.ReplaceAll(normalized, " ft ", "|")
+	normalized = strings.ReplaceAll(normalized, " & ", "|")
+	normalized = strings.ReplaceAll(normalized, " and ", "|")
+	normalized = strings.ReplaceAll(normalized, ", ", "|")
+	normalized = strings.ReplaceAll(normalized, " x ", "|")
+
+	parts := strings.Split(normalized, "|")
+	result := make([]string, 0, len(parts))
+	for _, p := range parts {
+		trimmed := strings.TrimSpace(p)
+		if trimmed != "" {
+			result = append(result, trimmed)
+		}
+	}
+	return result
+}
+
+// sameWordsUnordered checks if two strings have the same words regardless of order
+// Useful for Japanese names: "Sawano Hiroyuki" vs "Hiroyuki Sawano"
+func sameWordsUnordered(a, b string) bool {
+	wordsA := strings.Fields(a)
+	wordsB := strings.Fields(b)
+
+	// Must have same number of words
+	if len(wordsA) != len(wordsB) || len(wordsA) == 0 {
+		return false
+	}
+
+	// Sort and compare
+	sortedA := make([]string, len(wordsA))
+	sortedB := make([]string, len(wordsB))
+	copy(sortedA, wordsA)
+	copy(sortedB, wordsB)
+
+	// Simple bubble sort (usually just 2-3 words)
+	for i := 0; i < len(sortedA)-1; i++ {
+		for j := i + 1; j < len(sortedA); j++ {
+			if sortedA[i] > sortedA[j] {
+				sortedA[i], sortedA[j] = sortedA[j], sortedA[i]
+			}
+			if sortedB[i] > sortedB[j] {
+				sortedB[i], sortedB[j] = sortedB[j], sortedB[i]
+			}
+		}
+	}
+
+	for i := range sortedA {
+		if sortedA[i] != sortedB[i] {
+			return false
+		}
+	}
+	return true
 }
 
 // titlesMatch checks if track titles are similar enough
@@ -1473,14 +1432,15 @@ func isLatinScript(s string) bool {
 }
 
 // isASCIIString checks if a string contains only ASCII characters
-func isASCIIString(s string) bool {
-	for _, r := range s {
-		if r > 127 {
-			return false
-		}
-	}
-	return true
-}
+// Kept for potential future use
+// func isASCIIString(s string) bool {
+// 	for _, r := range s {
+// 		if r > 127 {
+// 			return false
+// 		}
+// 	}
+// 	return true
+// }
 
 // downloadFromTidal downloads a track using the request parameters
 func downloadFromTidal(req DownloadRequest) (TidalDownloadResult, error) {
@@ -1532,7 +1492,7 @@ func downloadFromTidal(req DownloadRequest) (TidalDownloadResult, error) {
 		}
 	}
 
-	// Strategy 2: Try SongLink only if ISRC search failed (slower but more accurate)
+	// Strategy 2: Try SongLink if we have Spotify ID
 	if track == nil && req.SpotifyID != "" {
 		GoLog("[Tidal] ISRC search failed, trying SongLink...\n")
 		var tidalURL string

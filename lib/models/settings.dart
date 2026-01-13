@@ -25,6 +25,11 @@ class AppSettings {
   final bool useCustomSpotifyCredentials; // Whether to use custom credentials (if set)
   final String metadataSource; // spotify, deezer - source for search and metadata
   final bool enableLogging; // Enable detailed logging for debugging
+  final bool useExtensionProviders; // Use extension providers for downloads when available
+  final String? searchProvider; // null/empty = default (Deezer/Spotify), otherwise extension ID
+  final bool separateSingles; // Separate singles/EPs into their own folder
+  final String albumFolderStructure; // artist_album or album_only
+  final bool showExtensionStore; // Show Extension Store tab in navigation
 
   const AppSettings({
     this.defaultService = 'tidal',
@@ -48,6 +53,11 @@ class AppSettings {
     this.useCustomSpotifyCredentials = true, // Default: use custom if set
     this.metadataSource = 'deezer', // Default: Deezer (no rate limit)
     this.enableLogging = false, // Default: disabled for performance
+    this.useExtensionProviders = true, // Default: use extensions when available
+    this.searchProvider, // Default: null (use Deezer/Spotify)
+    this.separateSingles = false, // Default: disabled
+    this.albumFolderStructure = 'artist_album', // Default: Albums/Artist/Album
+    this.showExtensionStore = true, // Default: show store
   });
 
   AppSettings copyWith({
@@ -72,6 +82,12 @@ class AppSettings {
     bool? useCustomSpotifyCredentials,
     String? metadataSource,
     bool? enableLogging,
+    bool? useExtensionProviders,
+    String? searchProvider,
+    bool clearSearchProvider = false, // Set to true to clear searchProvider to null
+    bool? separateSingles,
+    String? albumFolderStructure,
+    bool? showExtensionStore,
   }) {
     return AppSettings(
       defaultService: defaultService ?? this.defaultService,
@@ -95,6 +111,11 @@ class AppSettings {
       useCustomSpotifyCredentials: useCustomSpotifyCredentials ?? this.useCustomSpotifyCredentials,
       metadataSource: metadataSource ?? this.metadataSource,
       enableLogging: enableLogging ?? this.enableLogging,
+      useExtensionProviders: useExtensionProviders ?? this.useExtensionProviders,
+      searchProvider: clearSearchProvider ? null : (searchProvider ?? this.searchProvider),
+      separateSingles: separateSingles ?? this.separateSingles,
+      albumFolderStructure: albumFolderStructure ?? this.albumFolderStructure,
+      showExtensionStore: showExtensionStore ?? this.showExtensionStore,
     );
   }
 

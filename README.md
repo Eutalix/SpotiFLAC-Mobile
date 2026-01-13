@@ -40,6 +40,20 @@ To use Spotify as your search source without hitting rate limits:
 4. Enter your Client ID and Secret
 5. Change **Search Source** to Spotify
 
+## Extensions
+
+Extensions allow the community to add new music sources and features without waiting for app updates. When a streaming service API changes or a new source becomes available, extensions can be updated independently.
+
+### Installing Extensions
+1. Go to **Store** tab in the app
+2. Browse and install extensions with one tap
+3. Or download a `.spotiflac-ext` file and install manually via **Settings > Extensions**
+4. Configure extension settings if needed
+5. Set provider priority in **Settings > Extensions > Provider Priority**
+
+### Developing Extensions
+Want to create your own extension? Check out the [Extension Development Guide](https://zarz.moe/docs) for complete documentation.
+
 ## Other project
 
 ### [SpotiFLAC (Desktop)](https://github.com/afkarxyz/SpotiFLAC)
@@ -48,8 +62,6 @@ Get Spotify tracks in true FLAC from Tidal, Qobuz & Amazon Music for Windows, ma
 [![Ko-fi](https://img.shields.io/badge/Ko--fi-Support%20Me-FF5E5B?style=for-the-badge&logo=ko-fi&logoColor=white)](https://ko-fi.com/zarzet)
 
 ## Disclaimer
-
-> **iOS Support**: This app is primarily tested on Android. iOS support is experimental and may have bugs — the developer is too poor to afford an iPhone for proper testing. If you encounter issues on iOS, please report them!
 
 This project is for **educational and private use only**. The developer does not condone or encourage copyright infringement.
 

@@ -4,61 +4,68 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:spotiflac_android/providers/settings_provider.dart';
+import 'package:spotiflac_android/providers/extension_provider.dart';
 import 'package:spotiflac_android/widgets/settings_group.dart';
 
 class DownloadSettingsPage extends ConsumerWidget {
   const DownloadSettingsPage({super.key});
+  
+  // Built-in services that support quality options
+  static const _builtInServices = ['tidal', 'qobuz', 'amazon'];
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final settings = ref.watch(settingsProvider);
     final colorScheme = Theme.of(context).colorScheme;
     final topPadding = MediaQuery.of(context).padding.top;
+    
+    // Check if current service is built-in (supports quality options)
+    final isBuiltInService = _builtInServices.contains(settings.defaultService);
 
     return PopScope(
-      canPop: true,
+      canPop: true, // Always allow back gesture
       child: Scaffold(
         body: CustomScrollView(
           slivers: [
             // Collapsing App Bar with back button
             SliverAppBar(
-              expandedHeight: 120 + topPadding,
-              collapsedHeight: kToolbarHeight,
-              floating: false,
-              pinned: true,
-              backgroundColor: colorScheme.surface,
-              surfaceTintColor: Colors.transparent,
-              leading: IconButton(
-                icon: const Icon(Icons.arrow_back),
-                onPressed: () => Navigator.pop(context),
-              ),
-              flexibleSpace: LayoutBuilder(
-                builder: (context, constraints) {
-                  final maxHeight = 120 + topPadding;
-                  final minHeight = kToolbarHeight + topPadding;
-                  final expandRatio =
-                      ((constraints.maxHeight - minHeight) /
-                              (maxHeight - minHeight))
-                          .clamp(0.0, 1.0);
-                  final leftPadding = 56 - (32 * expandRatio); // 56 -> 24
-                  return FlexibleSpaceBar(
-                    expandedTitleScale: 1.0,
-                    titlePadding: EdgeInsets.only(
-                      left: leftPadding,
-                      bottom: 16,
-                    ),
-                    title: Text(
-                      'Download',
-                      style: TextStyle(
-                        fontSize: 20 + (8 * expandRatio), // 20 -> 28
-                        fontWeight: FontWeight.bold,
-                        color: colorScheme.onSurface,
-                      ),
-                    ),
-                  );
-                },
-              ),
+            expandedHeight: 120 + topPadding,
+            collapsedHeight: kToolbarHeight,
+            floating: false,
+            pinned: true,
+            backgroundColor: colorScheme.surface,
+            surfaceTintColor: Colors.transparent,
+            leading: IconButton(
+              icon: const Icon(Icons.arrow_back),
+              onPressed: () => Navigator.pop(context),
             ),
+            flexibleSpace: LayoutBuilder(
+              builder: (context, constraints) {
+                final maxHeight = 120 + topPadding;
+                final minHeight = kToolbarHeight + topPadding;
+                final expandRatio =
+                    ((constraints.maxHeight - minHeight) /
+                            (maxHeight - minHeight))
+                        .clamp(0.0, 1.0);
+                final leftPadding = 56 - (32 * expandRatio); // 56 -> 24
+                return FlexibleSpaceBar(
+                  expandedTitleScale: 1.0,
+                  titlePadding: EdgeInsets.only(
+                    left: leftPadding,
+                    bottom: 16,
+                  ),
+                  title: Text(
+                    'Download',
+                    style: TextStyle(
+                      fontSize: 20 + (8 * expandRatio), // 20 -> 28
+                      fontWeight: FontWeight.bold,
+                      color: colorScheme.onSurface,
+                    ),
+                  ),
+                );
+              },
+            ),
+          ),
 
             // Service section
             const SliverToBoxAdapter(
@@ -87,13 +94,17 @@ class DownloadSettingsPage extends ConsumerWidget {
                   SettingsSwitchItem(
                     icon: Icons.tune,
                     title: 'Ask Before Download',
-                    subtitle: 'Choose quality for each download',
+                    subtitle: isBuiltInService 
+                        ? 'Choose quality for each download'
+                        : 'Select a built-in service to enable',
                     value: settings.askQualityBeforeDownload,
+                    // Not selected visually if extension is active
+                    enabled: isBuiltInService,
                     onChanged: (value) => ref
                         .read(settingsProvider.notifier)
                         .setAskQualityBeforeDownload(value),
                   ),
-                  if (!settings.askQualityBeforeDownload) ...[
+                  if (!settings.askQualityBeforeDownload && isBuiltInService) ...[
                     _QualityOption(
                       title: 'FLAC Lossless',
                       subtitle: '16-bit / 44.1kHz',
@@ -118,6 +129,29 @@ class DownloadSettingsPage extends ConsumerWidget {
                           .read(settingsProvider.notifier)
                           .setAudioQuality('HI_RES_LOSSLESS'),
                       showDivider: false,
+                    ),
+                  ],
+                  if (!isBuiltInService) ...[
+                    Padding(
+                      padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
+                      child: Row(
+                        children: [
+                          Icon(
+                            Icons.info_outline,
+                            size: 16,
+                            color: colorScheme.onSurfaceVariant,
+                          ),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: Text(
+                              'Select Tidal, Qobuz, or Amazon above to configure quality',
+                              style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                                color: colorScheme.onSurfaceVariant,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
                     ),
                   ],
                 ],
@@ -151,24 +185,82 @@ class DownloadSettingsPage extends ConsumerWidget {
                         : settings.downloadDirectory,
                     onTap: () => _pickDirectory(context, ref),
                   ),
-                  SettingsItem(
-                    icon: Icons.create_new_folder_outlined,
-                    title: 'Folder Organization',
-                    subtitle: _getFolderOrganizationLabel(
-                      settings.folderOrganization,
-                    ),
-                    onTap: () => _showFolderOrganizationPicker(
-                      context,
-                      ref,
-                      settings.folderOrganization,
-                    ),
-                    showDivider: false,
+                  SettingsSwitchItem(
+                    icon: Icons.library_music_outlined,
+                    title: 'Separate Singles Folder',
+                    subtitle: settings.separateSingles
+                        ? 'Albums/ and Singles/ folders'
+                        : 'All files in same structure',
+                    value: settings.separateSingles,
+                    onChanged: (value) => ref
+                        .read(settingsProvider.notifier)
+                        .setSeparateSingles(value),
                   ),
+                  if (settings.separateSingles)
+                    SettingsItem(
+                      icon: Icons.folder_outlined,
+                      title: 'Album Folder Structure',
+                      subtitle: settings.albumFolderStructure == 'album_only'
+                          ? 'Albums/Album Name/'
+                          : 'Albums/Artist/Album Name/',
+                      onTap: () => _showAlbumFolderStructurePicker(
+                        context,
+                        ref,
+                        settings.albumFolderStructure,
+                      ),
+                    ),
+                  if (!settings.separateSingles)
+                    SettingsItem(
+                      icon: Icons.create_new_folder_outlined,
+                      title: 'Folder Organization',
+                      subtitle: _getFolderOrganizationLabel(
+                        settings.folderOrganization,
+                      ),
+                      onTap: () => _showFolderOrganizationPicker(
+                        context,
+                        ref,
+                        settings.folderOrganization,
+                      ),
+                      showDivider: false,
+                    ),
                 ],
               ),
             ),
 
             const SliverToBoxAdapter(child: SizedBox(height: 32)),
+          ],
+        ),
+      ),
+    );
+  }
+
+  void _showAlbumFolderStructurePicker(BuildContext context, WidgetRef ref, String current) {
+    showModalBottomSheet(
+      context: context,
+      builder: (context) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            ListTile(
+              leading: const Icon(Icons.folder_outlined),
+              title: const Text('Artist / Album'),
+              subtitle: const Text('Albums/Artist Name/Album Name/'),
+              trailing: current == 'artist_album' ? const Icon(Icons.check) : null,
+              onTap: () {
+                ref.read(settingsProvider.notifier).setAlbumFolderStructure('artist_album');
+                Navigator.pop(context);
+              },
+            ),
+            ListTile(
+              leading: const Icon(Icons.album_outlined),
+              title: const Text('Album Only'),
+              subtitle: const Text('Albums/Album Name/'),
+              trailing: current == 'album_only' ? const Icon(Icons.check) : null,
+              onTap: () {
+                ref.read(settingsProvider.notifier).setAlbumFolderStructure('album_only');
+                Navigator.pop(context);
+              },
+            ),
           ],
         ),
       ),
@@ -481,81 +573,87 @@ class DownloadSettingsPage extends ConsumerWidget {
     showModalBottomSheet(
       context: context,
       backgroundColor: colorScheme.surfaceContainerHigh,
+      isScrollControlled: true,
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
       ),
+      constraints: BoxConstraints(
+        maxHeight: MediaQuery.of(context).size.height * 0.7,
+      ),
       builder: (context) => SafeArea(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Padding(
-              padding: const EdgeInsets.fromLTRB(24, 24, 24, 8),
-              child: Text(
-                'Folder Organization',
-                style: Theme.of(
-                  context,
-                ).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.bold),
-              ),
-            ),
-            Padding(
-              padding: const EdgeInsets.fromLTRB(24, 0, 24, 16),
-              child: Text(
-                'Organize downloaded files into folders',
-                style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                  color: colorScheme.onSurfaceVariant,
+        child: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Padding(
+                padding: const EdgeInsets.fromLTRB(24, 24, 24, 8),
+                child: Text(
+                  'Folder Organization',
+                  style: Theme.of(
+                    context,
+                  ).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.bold),
                 ),
               ),
-            ),
-            _FolderOption(
-              title: 'None',
-              subtitle: 'All files in download folder',
-              example: 'SpotiFLAC/Track.flac',
-              isSelected: current == 'none',
-              onTap: () {
-                ref.read(settingsProvider.notifier).setFolderOrganization('none');
-                Navigator.pop(context);
-              },
-            ),
-            _FolderOption(
-              title: 'By Artist',
-              subtitle: 'Separate folder for each artist',
-              example: 'SpotiFLAC/Artist Name/Track.flac',
-              isSelected: current == 'artist',
-              onTap: () {
-                ref.read(settingsProvider.notifier).setFolderOrganization('artist');
-                Navigator.pop(context);
-              },
-            ),
-            _FolderOption(
-              title: 'By Album',
-              subtitle: 'Separate folder for each album',
-              example: 'SpotiFLAC/Album Name/Track.flac',
-              isSelected: current == 'album',
-              onTap: () {
-                ref.read(settingsProvider.notifier).setFolderOrganization('album');
-                Navigator.pop(context);
-              },
-            ),
-            _FolderOption(
-              title: 'By Artist & Album',
-              subtitle: 'Nested folders for artist and album',
-              example: 'SpotiFLAC/Artist/Album/Track.flac',
-              isSelected: current == 'artist_album',
-              onTap: () {
-                ref.read(settingsProvider.notifier).setFolderOrganization('artist_album');
-                Navigator.pop(context);
-              },
-            ),
-            const SizedBox(height: 16),
-          ],
+              Padding(
+                padding: const EdgeInsets.fromLTRB(24, 0, 24, 16),
+                child: Text(
+                  'Organize downloaded files into folders',
+                  style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                    color: colorScheme.onSurfaceVariant,
+                  ),
+                ),
+              ),
+              _FolderOption(
+                title: 'None',
+                subtitle: 'All files in download folder',
+                example: 'SpotiFLAC/Track.flac',
+                isSelected: current == 'none',
+                onTap: () {
+                  ref.read(settingsProvider.notifier).setFolderOrganization('none');
+                  Navigator.pop(context);
+                },
+              ),
+              _FolderOption(
+                title: 'By Artist',
+                subtitle: 'Separate folder for each artist',
+                example: 'SpotiFLAC/Artist Name/Track.flac',
+                isSelected: current == 'artist',
+                onTap: () {
+                  ref.read(settingsProvider.notifier).setFolderOrganization('artist');
+                  Navigator.pop(context);
+                },
+              ),
+              _FolderOption(
+                title: 'By Album',
+                subtitle: 'Separate folder for each album',
+                example: 'SpotiFLAC/Album Name/Track.flac',
+                isSelected: current == 'album',
+                onTap: () {
+                  ref.read(settingsProvider.notifier).setFolderOrganization('album');
+                  Navigator.pop(context);
+                },
+              ),
+              _FolderOption(
+                title: 'By Artist & Album',
+                subtitle: 'Nested folders for artist and album',
+                example: 'SpotiFLAC/Artist/Album/Track.flac',
+                isSelected: current == 'artist_album',
+                onTap: () {
+                  ref.read(settingsProvider.notifier).setFolderOrganization('artist_album');
+                  Navigator.pop(context);
+                },
+              ),
+              const SizedBox(height: 16),
+            ],
+          ),
         ),
       ),
     );
   }
 }
 
-class _ServiceSelector extends StatelessWidget {
+class _ServiceSelector extends ConsumerWidget {
   final String currentService;
   final ValueChanged<String> onChanged;
   const _ServiceSelector({
@@ -564,31 +662,75 @@ class _ServiceSelector extends StatelessWidget {
   });
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
+    final extState = ref.watch(extensionProvider);
+    
+    // Get enabled extension download providers
+    final extensionProviders = extState.extensions
+        .where((e) => e.enabled && e.hasDownloadProvider)
+        .toList();
+    
+    // Check if current service is an extension that's now disabled
+    final isExtensionService = !['tidal', 'qobuz', 'amazon'].contains(currentService);
+    final isCurrentExtensionEnabled = isExtensionService 
+        ? extensionProviders.any((e) => e.id == currentService)
+        : true;
+    
+    // If current extension is disabled, show it as not selected
+    final effectiveService = isCurrentExtensionEnabled ? currentService : '';
+    
     return Padding(
       padding: const EdgeInsets.all(12),
-      child: Row(
+      child: Column(
         children: [
-          _ServiceChip(
-            icon: Icons.music_note,
-            label: 'Tidal',
-            isSelected: currentService == 'tidal',
-            onTap: () => onChanged('tidal'),
+          Row(
+            children: [
+              _ServiceChip(
+                icon: Icons.music_note,
+                label: 'Tidal',
+                isSelected: effectiveService == 'tidal',
+                onTap: () => onChanged('tidal'),
+              ),
+              const SizedBox(width: 8),
+              _ServiceChip(
+                icon: Icons.album,
+                label: 'Qobuz',
+                isSelected: effectiveService == 'qobuz',
+                onTap: () => onChanged('qobuz'),
+              ),
+              const SizedBox(width: 8),
+              _ServiceChip(
+                icon: Icons.shopping_bag,
+                label: 'Amazon',
+                isSelected: effectiveService == 'amazon',
+                onTap: () => onChanged('amazon'),
+              ),
+            ],
           ),
-          const SizedBox(width: 8),
-          _ServiceChip(
-            icon: Icons.album,
-            label: 'Qobuz',
-            isSelected: currentService == 'qobuz',
-            onTap: () => onChanged('qobuz'),
-          ),
-          const SizedBox(width: 8),
-          _ServiceChip(
-            icon: Icons.shopping_bag,
-            label: 'Amazon',
-            isSelected: currentService == 'amazon',
-            onTap: () => onChanged('amazon'),
-          ),
+          // Show extension download providers if any
+          if (extensionProviders.isNotEmpty) ...[
+            const SizedBox(height: 8),
+            Row(
+              children: [
+                for (int i = 0; i < extensionProviders.length; i++) ...[
+                  if (i > 0) const SizedBox(width: 8),
+                  Expanded(
+                    child: _ServiceChip(
+                      icon: Icons.extension,
+                      label: extensionProviders[i].displayName,
+                      isSelected: effectiveService == extensionProviders[i].id,
+                      onTap: () => onChanged(extensionProviders[i].id),
+                    ),
+                  ),
+                ],
+                // Fill remaining space if less than 3 extensions
+                for (int i = extensionProviders.length; i < 3; i++) ...[
+                  const SizedBox(width: 8),
+                  const Expanded(child: SizedBox()),
+                ],
+              ],
+            ),
+          ],
         ],
       ),
     );

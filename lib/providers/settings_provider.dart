@@ -60,18 +60,16 @@ class SettingsNotifier extends Notifier<AppSettings> {
 
   /// Apply current Spotify credentials to Go backend
   Future<void> _applySpotifyCredentials() async {
-    // Only apply custom credentials if enabled and both fields are set
-    if (state.useCustomSpotifyCredentials && 
-        state.spotifyClientId.isNotEmpty && 
+    // Only apply if both fields are set
+    if (state.spotifyClientId.isNotEmpty && 
         state.spotifyClientSecret.isNotEmpty) {
       await PlatformBridge.setSpotifyCredentials(
         state.spotifyClientId,
         state.spotifyClientSecret,
       );
-    } else {
-      // Clear to use default
-      await PlatformBridge.setSpotifyCredentials('', '');
     }
+    // Note: If credentials are empty, Spotify API will return error
+    // User should use Deezer as metadata source instead
   }
 
   void setDefaultService(String service) {
@@ -197,11 +195,40 @@ class SettingsNotifier extends Notifier<AppSettings> {
     _saveSettings();
   }
 
+  void setSearchProvider(String? provider) {
+    if (provider == null || provider.isEmpty) {
+      state = state.copyWith(clearSearchProvider: true);
+    } else {
+      state = state.copyWith(searchProvider: provider);
+    }
+    _saveSettings();
+  }
+
   void setEnableLogging(bool enabled) {
     state = state.copyWith(enableLogging: enabled);
     _saveSettings();
     // Sync logging state to LogBuffer
     LogBuffer.loggingEnabled = enabled;
+  }
+
+  void setUseExtensionProviders(bool enabled) {
+    state = state.copyWith(useExtensionProviders: enabled);
+    _saveSettings();
+  }
+
+  void setSeparateSingles(bool enabled) {
+    state = state.copyWith(separateSingles: enabled);
+    _saveSettings();
+  }
+
+  void setAlbumFolderStructure(String structure) {
+    state = state.copyWith(albumFolderStructure: structure);
+    _saveSettings();
+  }
+
+  void setShowExtensionStore(bool enabled) {
+    state = state.copyWith(showExtensionStore: enabled);
+    _saveSettings();
   }
 }
 
