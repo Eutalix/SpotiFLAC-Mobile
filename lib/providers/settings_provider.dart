@@ -230,6 +230,11 @@ class SettingsNotifier extends Notifier<AppSettings> {
     state = state.copyWith(showExtensionStore: enabled);
     _saveSettings();
   }
+
+  void setLocale(String locale) {
+    state = state.copyWith(locale: locale);
+    _saveSettings();
+  }
 }
 
 final settingsProvider = NotifierProvider<SettingsNotifier, AppSettings>(

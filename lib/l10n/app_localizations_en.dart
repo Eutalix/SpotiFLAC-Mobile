@@ -1429,6 +1429,24 @@ class AppLocalizationsEn extends AppLocalizations {
   String get sectionLayout => 'Layout';
 
   @override
+  String get sectionLanguage => 'Language';
+
+  @override
+  String get appearanceLanguage => 'App Language';
+
+  @override
+  String get appearanceLanguageSubtitle => 'Choose your preferred language';
+
+  @override
+  String get languageSystem => 'System Default';
+
+  @override
+  String get languageEnglish => 'English';
+
+  @override
+  String get languageIndonesian => 'Bahasa Indonesia';
+
+  @override
   String get settingsAppearanceSubtitle => 'Theme, colors, display';
 
   @override

@@ -33,6 +33,13 @@ class SpotiFLACApp extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final router = ref.watch(_routerProvider);
+    final localeString = ref.watch(settingsProvider.select((s) => s.locale));
+    
+    // Convert locale string to Locale object
+    Locale? locale;
+    if (localeString != 'system') {
+      locale = Locale(localeString);
+    }
     
     return DynamicColorWrapper(
       builder: (lightTheme, darkTheme, themeMode) {
@@ -46,6 +53,7 @@ class SpotiFLACApp extends ConsumerWidget {
           themeAnimationCurve: Curves.easeInOut,
           routerConfig: router,
           // Localization
+          locale: locale, // null = follow system
           localizationsDelegates: const [
             AppLocalizations.delegate,
             GlobalMaterialLocalizations.delegate,

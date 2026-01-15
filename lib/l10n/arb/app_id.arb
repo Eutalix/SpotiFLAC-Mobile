@@ -305,6 +305,13 @@
   "sectionColor": "Warna",
   "sectionTheme": "Tema",
   "sectionLayout": "Tata Letak",
+  "sectionLanguage": "Bahasa",
+
+  "appearanceLanguage": "Bahasa Aplikasi",
+  "appearanceLanguageSubtitle": "Pilih bahasa yang kamu inginkan",
+  "languageSystem": "Bawaan Sistem",
+  "languageEnglish": "English",
+  "languageIndonesian": "Bahasa Indonesia",
 
   "settingsAppearanceSubtitle": "Tema, warna, tampilan",
   "settingsDownloadSubtitle": "Layanan, kualitas, format nama file",

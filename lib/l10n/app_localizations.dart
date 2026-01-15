@@ -2588,6 +2588,42 @@ abstract class AppLocalizations {
   /// **'Layout'**
   String get sectionLayout;
 
+  /// Settings section header for language selection
+  ///
+  /// In en, this message translates to:
+  /// **'Language'**
+  String get sectionLanguage;
+
+  /// Setting title for language selection
+  ///
+  /// In en, this message translates to:
+  /// **'App Language'**
+  String get appearanceLanguage;
+
+  /// Subtitle for language setting
+  ///
+  /// In en, this message translates to:
+  /// **'Choose your preferred language'**
+  String get appearanceLanguageSubtitle;
+
+  /// Use device system language
+  ///
+  /// In en, this message translates to:
+  /// **'System Default'**
+  String get languageSystem;
+
+  /// English language option
+  ///
+  /// In en, this message translates to:
+  /// **'English'**
+  String get languageEnglish;
+
+  /// Indonesian language option
+  ///
+  /// In en, this message translates to:
+  /// **'Bahasa Indonesia'**
+  String get languageIndonesian;
+
   /// Appearance settings description
   ///
   /// In en, this message translates to:
