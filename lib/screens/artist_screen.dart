@@ -351,6 +351,7 @@ return SliverAppBar(
         ),
       ),
       flexibleSpace: FlexibleSpaceBar(
+        collapseMode: CollapseMode.none,
         background: Stack(
           fit: StackFit.expand,
           children: [

@@ -121,7 +121,7 @@ class _PlaylistScreenState extends ConsumerState<PlaylistScreen> {
           final showContent = collapseRatio > 0.3;
           
           return FlexibleSpaceBar(
-            collapseMode: CollapseMode.pin,
+            collapseMode: CollapseMode.none,
             background: Stack(
               fit: StackFit.expand,
               children: [

@@ -325,7 +325,7 @@ class _DownloadedAlbumScreenState extends ConsumerState<DownloadedAlbumScreen> {
           final showContent = collapseRatio > 0.3;
           
           return FlexibleSpaceBar(
-            collapseMode: CollapseMode.pin,
+            collapseMode: CollapseMode.none,
             background: Stack(
               fit: StackFit.expand,
               children: [
