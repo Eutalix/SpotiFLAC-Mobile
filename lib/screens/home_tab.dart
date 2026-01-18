@@ -651,39 +651,64 @@ class _HomeTabState extends ConsumerState<HomeTab> with AutomaticKeepAliveClient
   Widget _buildRecentAccess(List<RecentAccessItem> items, ColorScheme colorScheme) {
     final historyItems = ref.read(downloadHistoryProvider).items;
     
-    // Group download history by album to avoid flooding recents with individual tracks
-    final albumMap = <String, DownloadHistoryItem>{};
+    // Group download history by album
+    final albumGroups = <String, List<DownloadHistoryItem>>{};
     for (final h in historyItems) {
-      // Use album name + artist as unique key (handle empty albumArtist)
       final artistForKey = (h.albumArtist != null && h.albumArtist!.isNotEmpty) 
           ? h.albumArtist! 
           : h.artistName;
       final albumKey = '${h.albumName}|$artistForKey';
-      // Keep the most recent download for each album
-      if (!albumMap.containsKey(albumKey) || 
-          h.downloadedAt.isAfter(albumMap[albumKey]!.downloadedAt)) {
-        albumMap[albumKey] = h;
+      albumGroups.putIfAbsent(albumKey, () => []).add(h);
+    }
+    
+    // Convert to RecentAccessItem based on track count:
+    // - 1 track: show as individual Track
+    // - 2+ tracks: show as Album
+    final downloadItems = <RecentAccessItem>[];
+    for (final entry in albumGroups.entries) {
+      final tracks = entry.value;
+      final mostRecent = tracks.reduce((a, b) => 
+          a.downloadedAt.isAfter(b.downloadedAt) ? a : b);
+      final artistForKey = (mostRecent.albumArtist != null && mostRecent.albumArtist!.isNotEmpty) 
+          ? mostRecent.albumArtist! 
+          : mostRecent.artistName;
+      
+      if (tracks.length == 1) {
+        // Single track - show as Track
+        downloadItems.add(RecentAccessItem(
+          id: mostRecent.spotifyId ?? mostRecent.id,
+          name: mostRecent.trackName,
+          subtitle: mostRecent.artistName,
+          imageUrl: mostRecent.coverUrl,
+          type: RecentAccessType.track,
+          accessedAt: mostRecent.downloadedAt,
+          providerId: 'download',
+        ));
+      } else {
+        // Multiple tracks - show as Album
+        downloadItems.add(RecentAccessItem(
+          id: '${mostRecent.albumName}|$artistForKey',
+          name: mostRecent.albumName,
+          subtitle: artistForKey,
+          imageUrl: mostRecent.coverUrl,
+          type: RecentAccessType.album,
+          accessedAt: mostRecent.downloadedAt,
+          providerId: 'download',
+        ));
       }
     }
     
-    // Convert grouped albums to RecentAccessItem with album type
-    final downloadItems = albumMap.values.take(10).map((h) {
-      // Use albumArtist if available and not empty, otherwise artistName
-      final artistForKey = (h.albumArtist != null && h.albumArtist!.isNotEmpty) 
-          ? h.albumArtist! 
-          : h.artistName;
-      return RecentAccessItem(
-        id: '${h.albumName}|$artistForKey', // Use album key as ID
-        name: h.albumName,
-        subtitle: artistForKey,
-        imageUrl: h.coverUrl,
-        type: RecentAccessType.album,
-        accessedAt: h.downloadedAt,
-        providerId: 'download',
-      );
-    }).toList();
+    // Sort by most recent and take top 10
+    downloadItems.sort((a, b) => b.accessedAt.compareTo(a.accessedAt));
     
-    final allItems = [...items, ...downloadItems];
+    // Filter out hidden downloads
+    final hiddenIds = ref.read(recentAccessProvider).hiddenDownloadIds;
+    final visibleDownloads = downloadItems
+        .where((item) => !hiddenIds.contains(item.id))
+        .take(10)
+        .toList();
+    
+    final allItems = [...items, ...visibleDownloads];
     allItems.sort((a, b) => b.accessedAt.compareTo(a.accessedAt));
     
     final seen = <String>{};
@@ -711,6 +736,7 @@ class _HomeTabState extends ConsumerState<HomeTab> with AutomaticKeepAliveClient
               TextButton(
                 onPressed: () {
                   ref.read(recentAccessProvider.notifier).clearHistory();
+                  ref.read(recentAccessProvider.notifier).clearHiddenDownloads();
                 },
                 child: Text(
                   context.l10n.dialogClearAll,
@@ -804,7 +830,13 @@ class _HomeTabState extends ConsumerState<HomeTab> with AutomaticKeepAliveClient
               IconButton(
                 icon: Icon(Icons.close, size: 20, color: colorScheme.onSurfaceVariant),
                 onPressed: () {
-                  ref.read(recentAccessProvider.notifier).removeItem(item);
+                  if (item.providerId == 'download') {
+                    // For download items, hide from recents without deleting the file
+                    ref.read(recentAccessProvider.notifier).hideDownloadFromRecents(item.id);
+                  } else {
+                    // For other items, remove from recent history
+                    ref.read(recentAccessProvider.notifier).removeItem(item);
+                  }
                 },
               ),
             ],
