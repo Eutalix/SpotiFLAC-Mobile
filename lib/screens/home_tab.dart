@@ -719,6 +719,9 @@ class _HomeTabState extends ConsumerState<HomeTab> with AutomaticKeepAliveClient
       return true;
     }).take(10).toList();
     
+    // Check if there are hidden downloads
+    final hasHiddenDownloads = hiddenIds.isNotEmpty;
+    
     return Padding(
       padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
       child: Column(
@@ -733,20 +736,55 @@ class _HomeTabState extends ConsumerState<HomeTab> with AutomaticKeepAliveClient
                   color: colorScheme.onSurfaceVariant,
                 ),
               ),
-              TextButton(
-                onPressed: () {
-                  ref.read(recentAccessProvider.notifier).clearHistory();
-                  ref.read(recentAccessProvider.notifier).clearHiddenDownloads();
-                },
-                child: Text(
-                  context.l10n.dialogClearAll,
-                  style: TextStyle(color: colorScheme.primary, fontSize: 12),
+              if (uniqueItems.isNotEmpty)
+                TextButton(
+                  onPressed: () {
+                    // Hide all visible download items
+                    for (final item in uniqueItems) {
+                      if (item.providerId == 'download') {
+                        ref.read(recentAccessProvider.notifier).hideDownloadFromRecents(item.id);
+                      }
+                    }
+                    // Clear non-download recent history
+                    ref.read(recentAccessProvider.notifier).clearHistory();
+                  },
+                  child: Text(
+                    context.l10n.dialogClearAll,
+                    style: TextStyle(color: colorScheme.primary, fontSize: 12),
+                  ),
                 ),
-              ),
             ],
           ),
           const SizedBox(height: 8),
-          ...uniqueItems.map((item) => _buildRecentAccessItem(item, colorScheme)),
+          if (uniqueItems.isEmpty && hasHiddenDownloads)
+            // Show "Show All" button when recents is empty but there are hidden downloads
+            Center(
+              child: Padding(
+                padding: const EdgeInsets.symmetric(vertical: 24),
+                child: Column(
+                  children: [
+                    Icon(Icons.visibility_off, size: 48, color: colorScheme.onSurfaceVariant.withValues(alpha: 0.5)),
+                    const SizedBox(height: 12),
+                    Text(
+                      'No recent items',
+                      style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                        color: colorScheme.onSurfaceVariant,
+                      ),
+                    ),
+                    const SizedBox(height: 16),
+                    OutlinedButton.icon(
+                      onPressed: () {
+                        ref.read(recentAccessProvider.notifier).clearHiddenDownloads();
+                      },
+                      icon: const Icon(Icons.visibility, size: 18),
+                      label: const Text('Show All Downloads'),
+                    ),
+                  ],
+                ),
+              ),
+            )
+          else
+            ...uniqueItems.map((item) => _buildRecentAccessItem(item, colorScheme)),
         ],
       ),
     );
