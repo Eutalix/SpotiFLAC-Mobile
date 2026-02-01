@@ -970,7 +970,15 @@ func (t *TidalDownloader) downloadFromManifest(ctx context.Context, manifestB64,
 		return nil
 	}
 
-	m4aPath := strings.TrimSuffix(outputPath, ".flac") + ".m4a"
+	// For DASH format, determine correct M4A path
+	// If outputPath already ends with .m4a, use it directly
+	// Otherwise, convert .flac to .m4a
+	var m4aPath string
+	if strings.HasSuffix(outputPath, ".m4a") {
+		m4aPath = outputPath
+	} else {
+		m4aPath = strings.TrimSuffix(outputPath, ".flac") + ".m4a"
+	}
 	GoLog("[Tidal] DASH format - downloading %d segments directly to: %s\n", len(mediaURLs), m4aPath)
 
 	out, err := os.Create(m4aPath)
