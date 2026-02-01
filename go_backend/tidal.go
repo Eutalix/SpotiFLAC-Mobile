@@ -1112,7 +1112,6 @@ func artistsMatch(spotifyArtist, tidalArtist string) bool {
 		return true
 	}
 
-	// Check if one contains the other (for cases like "Artist" vs "Artist feat. Someone")
 	if strings.Contains(normSpotify, normTidal) || strings.Contains(normTidal, normSpotify) {
 		return true
 	}
@@ -1171,7 +1170,6 @@ func sameWordsUnordered(a, b string) bool {
 	wordsA := strings.Fields(a)
 	wordsB := strings.Fields(b)
 
-	// Must have same number of words
 	if len(wordsA) != len(wordsB) || len(wordsA) == 0 {
 		return false
 	}
@@ -1204,7 +1202,6 @@ func titlesMatch(expectedTitle, foundTitle string) bool {
 	normExpected := strings.ToLower(strings.TrimSpace(expectedTitle))
 	normFound := strings.ToLower(strings.TrimSpace(foundTitle))
 
-	// Exact match
 	if normExpected == normFound {
 		return true
 	}
@@ -1213,7 +1210,6 @@ func titlesMatch(expectedTitle, foundTitle string) bool {
 		return true
 	}
 
-	// Clean both titles and compare
 	cleanExpected := cleanTitle(normExpected)
 	cleanFound := cleanTitle(normFound)
 
@@ -1227,7 +1223,6 @@ func titlesMatch(expectedTitle, foundTitle string) bool {
 		}
 	}
 
-	// Extract core title (before any parentheses/brackets)
 	coreExpected := extractCoreTitle(normExpected)
 	coreFound := extractCoreTitle(normFound)
 
@@ -1235,7 +1230,6 @@ func titlesMatch(expectedTitle, foundTitle string) bool {
 		return true
 	}
 
-	// Don't treat Latin Extended (Polish, French, etc.) as different script
 	expectedLatin := isLatinScript(expectedTitle)
 	foundLatin := isLatinScript(foundTitle)
 	if expectedLatin != foundLatin {
@@ -1522,13 +1516,12 @@ func downloadFromTidal(req DownloadRequest) (TidalDownloadResult, error) {
 		"disc":   req.DiscNumber,
 	})
 
-	// For HIGH quality (AAC 320kbps), use .m4a extension directly
 	var outputPath string
 	var m4aPath string
 	if quality == "HIGH" {
 		filename = sanitizeFilename(filename) + ".m4a"
 		outputPath = filepath.Join(req.OutputDir, filename)
-		m4aPath = outputPath // Same path for HIGH quality
+		m4aPath = outputPath
 	} else {
 		filename = sanitizeFilename(filename) + ".flac"
 		outputPath = filepath.Join(req.OutputDir, filename)
@@ -1538,7 +1531,6 @@ func downloadFromTidal(req DownloadRequest) (TidalDownloadResult, error) {
 	if fileInfo, statErr := os.Stat(outputPath); statErr == nil && fileInfo.Size() > 0 {
 		return TidalDownloadResult{FilePath: "EXISTS:" + outputPath}, nil
 	}
-	// For non-HIGH quality, also check for existing M4A (DASH downloads)
 	if quality != "HIGH" {
 		if fileInfo, statErr := os.Stat(m4aPath); statErr == nil && fileInfo.Size() > 0 {
 			return TidalDownloadResult{FilePath: "EXISTS:" + m4aPath}, nil
@@ -1613,7 +1605,6 @@ func downloadFromTidal(req DownloadRequest) (TidalDownloadResult, error) {
 		GoLog("[Tidal] Using release date from Tidal API: %s\n", releaseDate)
 	}
 
-	// Use track number from request if available, otherwise from Tidal API
 	actualTrackNumber := req.TrackNumber
 	actualDiscNumber := req.DiscNumber
 	if actualTrackNumber == 0 {
@@ -1676,19 +1667,15 @@ func downloadFromTidal(req DownloadRequest) (TidalDownloadResult, error) {
 			fmt.Println("[Tidal] No lyrics available from parallel fetch")
 		}
 	} else if strings.HasSuffix(actualOutputPath, ".m4a") {
-		// For HIGH quality (AAC 320kbps), skip metadata embedding as it can corrupt the file
-		// The M4A from Tidal server already has basic metadata
 		if quality == "HIGH" {
 			GoLog("[Tidal] HIGH quality M4A - skipping metadata embedding (file from server is already valid)\n")
 
-			// Handle lyrics based on lyricsMode setting
 			if req.EmbedLyrics && parallelResult != nil && parallelResult.LyricsLRC != "" {
 				lyricsMode := req.LyricsMode
 				if lyricsMode == "" {
-					lyricsMode = "embed" // default
+					lyricsMode = "embed"
 				}
 
-				// Save external LRC file if mode is "external" or "both"
 				if lyricsMode == "external" || lyricsMode == "both" {
 					GoLog("[Tidal] Saving external LRC file for M4A (mode: %s)...\n", lyricsMode)
 					if lrcPath, lrcErr := SaveLRCFile(actualOutputPath, parallelResult.LyricsLRC); lrcErr != nil {
@@ -1697,8 +1684,6 @@ func downloadFromTidal(req DownloadRequest) (TidalDownloadResult, error) {
 						GoLog("[Tidal] LRC file saved: %s\n", lrcPath)
 					}
 				}
-				// Note: For "embed" or "both" modes, LyricsLRC will be returned to Flutter
-				// for embedding into the converted MP3/Opus file
 			}
 		} else {
 			fmt.Println("[Tidal] Skipping metadata embedding for M4A file (will be handled after FFmpeg conversion)")
@@ -1707,15 +1692,12 @@ func downloadFromTidal(req DownloadRequest) (TidalDownloadResult, error) {
 
 	AddToISRCIndex(req.OutputDir, req.ISRC, actualOutputPath)
 
-	// For HIGH quality (AAC), set appropriate values
 	bitDepth := downloadInfo.BitDepth
 	sampleRate := downloadInfo.SampleRate
 	lyricsLRC := ""
 	if quality == "HIGH" {
-		// AAC 320kbps doesn't have traditional bit depth
 		bitDepth = 0
 		sampleRate = 44100
-		// Return lyrics for Flutter to embed in converted MP3/Opus
 		if parallelResult != nil && parallelResult.LyricsLRC != "" {
 			lyricsMode := req.LyricsMode
 			if lyricsMode == "" {

@@ -1878,7 +1878,7 @@ class DownloadQueueNotifier extends Notifier<DownloadQueueState> {
           'Quality: $quality${item.qualityOverride != null ? ' (override)' : ''}',
         );
         _log.d('Output dir: $outputDir');
-        result = await PlatformBridge.downloadWithExtensions(
+result = await PlatformBridge.downloadWithExtensions(
           isrc: trackToDownload.isrc ?? '',
           spotifyId: trackToDownload.id,
           trackName: trackToDownload.name,
@@ -1898,6 +1898,7 @@ class DownloadQueueNotifier extends Notifier<DownloadQueueState> {
           genre: genre,
           label: label,
           lyricsMode: settings.lyricsMode,
+          preferredService: item.service,
         );
       } else if (state.autoFallback) {
         _log.d('Using auto-fallback mode');

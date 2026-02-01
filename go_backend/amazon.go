@@ -55,7 +55,6 @@ func NewAmazonDownloader() *AmazonDownloader {
 }
 
 func (a *AmazonDownloader) downloadFromAfkarXYZ(amazonURL string) (string, string, error) {
-	// AfkarXYZ API endpoint
 	apiURL := "https://amazon.afkarxyz.fun/convert?url=" + url.QueryEscape(amazonURL)
 
 	GoLog("[Amazon] Fetching from AfkarXYZ API...\n")
@@ -96,7 +95,6 @@ func (a *AmazonDownloader) downloadFromAfkarXYZ(amazonURL string) (string, strin
 		fileName = "track.flac"
 	}
 
-	// Sanitize filename
 	reg := regexp.MustCompile(`[<>:"/\\|?*]`)
 	fileName = reg.ReplaceAllString(fileName, "")
 
@@ -108,7 +106,6 @@ func (a *AmazonDownloader) downloadFromAfkarXYZ(amazonURL string) (string, strin
 func (a *AmazonDownloader) DownloadFile(downloadURL, outputPath, itemID string) error {
 	ctx := context.Background()
 
-	// Initialize item progress (required for all downloads)
 	if itemID != "" {
 		StartItemProgress(itemID)
 		defer CompleteItemProgress(itemID)
@@ -160,7 +157,6 @@ func (a *AmazonDownloader) DownloadFile(downloadURL, outputPath, itemID string) 
 		written, err = io.Copy(bufWriter, resp.Body)
 	}
 
-	// Flush buffer before checking for errors
 	flushErr := bufWriter.Flush()
 	closeErr := out.Close()
 
@@ -180,7 +176,6 @@ func (a *AmazonDownloader) DownloadFile(downloadURL, outputPath, itemID string) 
 		return fmt.Errorf("failed to close file: %w", closeErr)
 	}
 
-	// Verify file size if Content-Length was provided
 	if expectedSize > 0 && written != expectedSize {
 		os.Remove(outputPath)
 		return fmt.Errorf("incomplete download: expected %d bytes, got %d bytes", expectedSize, written)
@@ -302,7 +297,6 @@ func downloadFromAmazon(req DownloadRequest) (AmazonDownloadResult, error) {
 	actualArtist := req.ArtistName
 
 	if metaErr == nil && existingMeta != nil {
-		// Use track/disc number from Amazon file if request has default values
 		if existingMeta.TrackNumber > 0 && (req.TrackNumber == 0 || req.TrackNumber == 1) {
 			actualTrackNum = existingMeta.TrackNumber
 			GoLog("[Amazon] Using track number from file: %d (request had: %d)\n", actualTrackNum, req.TrackNumber)
@@ -311,23 +305,18 @@ func downloadFromAmazon(req DownloadRequest) (AmazonDownloadResult, error) {
 			actualDiscNum = existingMeta.DiscNumber
 			GoLog("[Amazon] Using disc number from file: %d (request had: %d)\n", actualDiscNum, req.DiscNumber)
 		}
-		// Use release date from Amazon file if request doesn't have it
 		if existingMeta.Date != "" && req.ReleaseDate == "" {
 			actualDate = existingMeta.Date
 			GoLog("[Amazon] Using release date from file: %s\n", actualDate)
 		}
-		// Use album from Amazon file if request doesn't have it
 		if existingMeta.Album != "" && req.AlbumName == "" {
 			actualAlbum = existingMeta.Album
 			GoLog("[Amazon] Using album from file: %s\n", actualAlbum)
 		}
-		// Log existing metadata for debugging
 		GoLog("[Amazon] Existing metadata - Title: %s, Artist: %s, Album: %s, Date: %s\n",
 			existingMeta.Title, existingMeta.Artist, existingMeta.Album, existingMeta.Date)
 	}
 
-	// Embed metadata using Spotify/Deezer data (preferred for consistency)
-	// but use Amazon file data as fallback for missing fields
 	metadata := Metadata{
 		Title:       actualTitle,
 		Artist:      actualArtist,
@@ -343,13 +332,11 @@ func downloadFromAmazon(req DownloadRequest) (AmazonDownloadResult, error) {
 		Copyright:   req.Copyright,
 	}
 
-	// Use cover data from parallel fetch, or extract from Amazon file if not available
 	var coverData []byte
 	if parallelResult != nil && parallelResult.CoverData != nil && len(parallelResult.CoverData) > 0 {
 		coverData = parallelResult.CoverData
 		GoLog("[Amazon] Using parallel-fetched cover (%d bytes)\n", len(coverData))
 	} else {
-		// Try to extract existing cover from Amazon file
 		existingCover, coverErr := ExtractCoverArt(outputPath)
 		if coverErr == nil && len(existingCover) > 0 {
 			coverData = existingCover
@@ -366,7 +353,7 @@ func downloadFromAmazon(req DownloadRequest) (AmazonDownloadResult, error) {
 	if req.EmbedLyrics && parallelResult != nil && parallelResult.LyricsLRC != "" {
 		lyricsMode := req.LyricsMode
 		if lyricsMode == "" {
-			lyricsMode = "embed" // default
+			lyricsMode = "embed"
 		}
 
 		if lyricsMode == "external" || lyricsMode == "both" {

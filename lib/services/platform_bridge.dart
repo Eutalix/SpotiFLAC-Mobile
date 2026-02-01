@@ -323,7 +323,6 @@ class PlatformBridge {
     });
   }
 
-  /// Returns true if credentials are available (custom or env vars)
   static Future<bool> hasSpotifyCredentials() async {
     final result = await _channel.invokeMethod('hasSpotifyCredentials');
     return result as bool;
@@ -410,7 +409,6 @@ class PlatformBridge {
     return logs.map((e) => e as Map<String, dynamic>).toList();
   }
 
-  /// Get logs since a specific index (for incremental updates)
   static Future<Map<String, dynamic>> getGoLogsSince(int index) async {
     final result = await _channel.invokeMethod('getLogsSince', {'index': index});
     return jsonDecode(result as String) as Map<String, dynamic>;
@@ -561,7 +559,7 @@ class PlatformBridge {
     return list.map((e) => e as Map<String, dynamic>).toList();
   }
 
-  static Future<Map<String, dynamic>> downloadWithExtensions({
+static Future<Map<String, dynamic>> downloadWithExtensions({
     required String isrc,
     required String spotifyId,
     required String trackName,
@@ -584,8 +582,9 @@ class PlatformBridge {
     String? genre,
     String? label,
     String lyricsMode = 'embed',
+    String? preferredService,
   }) async {
-    _log.i('downloadWithExtensions: "$trackName" by $artistName${source != null ? ' (source: $source)' : ''}');
+    _log.i('downloadWithExtensions: "$trackName" by $artistName${source != null ? ' (source: $source)' : ''}${preferredService != null ? ' (service: $preferredService)' : ''}');
     final request = jsonEncode({
       'isrc': isrc,
       'spotify_id': spotifyId,
@@ -609,6 +608,7 @@ class PlatformBridge {
       'genre': genre ?? '',
       'label': label ?? '',
       'lyrics_mode': lyricsMode,
+      'service': preferredService ?? '',
     });
     
     final result = await _channel.invokeMethod('downloadWithExtensions', request);
@@ -795,7 +795,6 @@ class PlatformBridge {
     }
   }
 
-  /// Get extension home feed
   static Future<Map<String, dynamic>?> getExtensionHomeFeed(String extensionId) async {
     try {
       final result = await _channel.invokeMethod('getExtensionHomeFeed', {
@@ -809,7 +808,6 @@ class PlatformBridge {
     }
   }
 
-  /// Get extension browse categories
   static Future<Map<String, dynamic>?> getExtensionBrowseCategories(String extensionId) async {
     try {
       final result = await _channel.invokeMethod('getExtensionBrowseCategories', {

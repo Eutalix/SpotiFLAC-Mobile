@@ -353,7 +353,6 @@ func ExtractCoverArt(filePath string) ([]byte, error) {
 		}
 	}
 
-	// If no front cover found, return any picture
 	for _, meta := range f.Meta {
 		if meta.Type == flac.Picture {
 			pic, err := flacpicture.ParseFromMetaDataBlock(*meta)

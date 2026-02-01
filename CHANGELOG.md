@@ -7,6 +7,11 @@ Same as 3.3.1 but fixes crash issues caused by FFmpeg.
 ### Fixed
 
 - **FFmpeg Crash**: Fixed crash issues during M4A to MP3/Opus conversion
+- **Service Selection Ignored**: Fixed bug where selecting Qobuz/Amazon from service picker was ignored and always used Tidal instead
+
+### Changed
+
+- **Amazon Fallback Only**: Amazon Music is now grayed out in service picker and can only be used as fallback provider
 
 ---
 

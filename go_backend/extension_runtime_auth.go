@@ -70,13 +70,11 @@ func (r *ExtensionRuntime) authGetCode(call goja.FunctionCall) goja.Value {
 	return r.vm.ToValue(state.AuthCode)
 }
 
-// authSetCode sets auth code and tokens (can be called by extension after token exchange)
 func (r *ExtensionRuntime) authSetCode(call goja.FunctionCall) goja.Value {
 	if len(call.Arguments) < 1 {
 		return r.vm.ToValue(false)
 	}
 
-	// Can accept either just auth code or an object with tokens
 	arg := call.Arguments[0].Export()
 
 	extensionAuthStateMu.Lock()

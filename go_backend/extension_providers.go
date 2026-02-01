@@ -732,7 +732,7 @@ func GetMetadataProviderPriority() []string {
 // isBuiltInProvider checks if a provider ID is a built-in provider
 func isBuiltInProvider(providerID string) bool {
 	switch providerID {
-	case "tidal", "qobuz", "amazon":
+	case "tidal", "qobuz", "amazon", "deezer":
 		return true
 	default:
 		return false
@@ -747,6 +747,21 @@ func isBuiltInProvider(providerID string) bool {
 func DownloadWithExtensionFallback(req DownloadRequest) (*DownloadResponse, error) {
 	priority := GetProviderPriority()
 	extManager := GetExtensionManager()
+
+	// If req.Service is a built-in provider, prioritize it first
+	// This handles user's explicit selection from the service picker
+	if req.Service != "" && isBuiltInProvider(req.Service) {
+		GoLog("[DownloadWithExtensionFallback] User selected service: %s, prioritizing it first\n", req.Service)
+		// Reorder priority to put req.Service first
+		newPriority := []string{req.Service}
+		for _, p := range priority {
+			if p != req.Service {
+				newPriority = append(newPriority, p)
+			}
+		}
+		priority = newPriority
+		GoLog("[DownloadWithExtensionFallback] New priority order: %v\n", priority)
+	}
 
 	var lastErr error
 	var skipBuiltIn bool // If source extension has skipBuiltInFallback, don't try built-in providers

@@ -43,7 +43,6 @@ class _EagerInitializationState extends ConsumerState<_EagerInitialization> {
   void initState() {
     super.initState();
     _initializeExtensions();
-    // Trigger history provider initialization without subscribing to updates.
     ref.read(downloadHistoryProvider);
   }
 

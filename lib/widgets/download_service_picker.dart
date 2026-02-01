@@ -10,11 +10,15 @@ class BuiltInService {
   final String id;
   final String label;
   final List<QualityOption> qualityOptions;
+  final bool isDisabled; // If true, service is grayed out (fallback only)
+  final String? disabledReason;
 
   const BuiltInService({
     required this.id,
     required this.label,
     required this.qualityOptions,
+    this.isDisabled = false,
+    this.disabledReason,
   });
 }
 
@@ -47,6 +51,8 @@ const _builtInServices = [
       QualityOption(id: 'HI_RES', label: 'Hi-Res FLAC', description: '24-bit / up to 96kHz'),
       QualityOption(id: 'HI_RES_LOSSLESS', label: 'Hi-Res FLAC Max', description: '24-bit / up to 192kHz'),
     ],
+    isDisabled: true,
+    disabledReason: 'Fallback only',
   ),
 ];
 
@@ -169,7 +175,7 @@ class _DownloadServicePickerState extends ConsumerState<DownloadServicePicker> {
               ),
             ),
 
-            Padding(
+Padding(
               padding: const EdgeInsets.symmetric(horizontal: 20),
               child: Wrap(
                 spacing: 8,
@@ -177,9 +183,14 @@ class _DownloadServicePickerState extends ConsumerState<DownloadServicePicker> {
                 children: [
                   for (final service in _builtInServices)
                     _ServiceChip(
-                      label: service.label,
+                      label: service.isDisabled 
+                          ? '${service.label} (${service.disabledReason})'
+                          : service.label,
                       isSelected: _selectedService == service.id,
-                      onTap: () => setState(() => _selectedService = service.id),
+                      isDisabled: service.isDisabled,
+                      onTap: service.isDisabled 
+                          ? null 
+                          : () => setState(() => _selectedService = service.id),
                     ),
                   for (final ext in downloadExtensions)
                     _ServiceChip(
@@ -392,26 +403,32 @@ class _QualityOption extends StatelessWidget {
 class _ServiceChip extends StatelessWidget {
   final String label;
   final bool isSelected;
-  final VoidCallback onTap;
+  final VoidCallback? onTap;
   final String? iconPath;
+  final bool isDisabled;
 
   const _ServiceChip({
     required this.label,
     required this.isSelected,
     required this.onTap,
     this.iconPath,
+    this.isDisabled = false,
   });
 
   @override
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
     return GestureDetector(
-      onTap: onTap,
+      onTap: isDisabled ? null : onTap,
       child: AnimatedContainer(
         duration: const Duration(milliseconds: 200),
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
         decoration: BoxDecoration(
-          color: isSelected ? colorScheme.primaryContainer : colorScheme.surfaceContainerHighest,
+          color: isDisabled 
+              ? colorScheme.surfaceContainerHighest.withValues(alpha: 0.5)
+              : isSelected 
+                  ? colorScheme.primaryContainer 
+                  : colorScheme.surfaceContainerHighest,
           borderRadius: BorderRadius.circular(12),
           border: isSelected ? null : Border.all(color: colorScheme.outlineVariant.withValues(alpha: 0.5)),
         ),
@@ -429,7 +446,11 @@ class _ServiceChip extends StatelessWidget {
                   errorBuilder: (context, error, stackTrace) => Icon(
                     Icons.extension,
                     size: 18,
-                    color: isSelected ? colorScheme.onPrimaryContainer : colorScheme.onSurfaceVariant,
+                    color: isDisabled 
+                        ? colorScheme.onSurfaceVariant.withValues(alpha: 0.4)
+                        : isSelected 
+                            ? colorScheme.onPrimaryContainer 
+                            : colorScheme.onSurfaceVariant,
                   ),
                 ),
               ),
@@ -439,7 +460,11 @@ class _ServiceChip extends StatelessWidget {
               label,
               style: TextStyle(
                 fontWeight: isSelected ? FontWeight.w600 : FontWeight.normal,
-                color: isSelected ? colorScheme.onPrimaryContainer : colorScheme.onSurfaceVariant,
+                color: isDisabled 
+                    ? colorScheme.onSurfaceVariant.withValues(alpha: 0.4)
+                    : isSelected 
+                        ? colorScheme.onPrimaryContainer 
+                        : colorScheme.onSurfaceVariant,
               ),
             ),
           ],
