@@ -85,7 +85,7 @@
   "@historyFilterSingles": {
     "description": "Filter chip - show singles only"
   },
-  "historyTracksCount": "{count, plural, one {}=1{1 şarkı} other{{count} şarkı}}",
+  "historyTracksCount": "{count, plural, one {1 şarkı} other {{count} şarkı}}",
   "@historyTracksCount": {
     "description": "Track count with plural form",
     "placeholders": {
@@ -94,7 +94,7 @@
       }
     }
   },
-  "historyAlbumsCount": "{count, plural, one {}=1{1 albüm} other{{count} albüm}}",
+  "historyAlbumsCount": "{count, plural, one {1 albüm} other {{count} albüm}}",
   "@historyAlbumsCount": {
     "description": "Album count with plural form",
     "placeholders": {
@@ -624,7 +624,7 @@
   "@albumTitle": {
     "description": "Album screen title"
   },
-  "albumTracks": "{count, plural, one {}=1{1 şarkı} other{{count} şarkı}}",
+  "albumTracks": "{count, plural, one {1 şarkı} other {{count} şarkı}}",
   "@albumTracks": {
     "description": "Album track count",
     "placeholders": {
@@ -1136,7 +1136,7 @@
   "@dialogDeleteSelectedTitle": {
     "description": "Dialog title - delete selected items"
   },
-  "dialogDeleteSelectedMessage": "{count} {count, plural, one {}=1{şarkıyı} other{şarkıyı}} geçmişten silmeye emin misiniz?\n\nBu işlem seçilenleri cihazınızdan da silecektir.",
+  "dialogDeleteSelectedMessage": "{count} {count, plural, one {şarkıyı} other {şarkıyı}} geçmişten silmeye emin misiniz?\n\nBu işlem seçilenleri cihazınızdan da silecektir.",
   "@dialogDeleteSelectedMessage": {
     "description": "Dialog message - delete selected tracks",
     "placeholders": {
@@ -1206,7 +1206,7 @@
   "@snackbarCredentialsCleared": {
     "description": "Snackbar - Spotify credentials removed"
   },
-  "snackbarDeletedTracks": "{count} {count, plural, one {}=1{şarkı} other{şarkı}} silindi",
+  "snackbarDeletedTracks": "{count} {count, plural, one {şarkı} other {şarkı}} silindi",
   "@snackbarDeletedTracks": {
     "description": "Snackbar - tracks deleted",
     "placeholders": {
