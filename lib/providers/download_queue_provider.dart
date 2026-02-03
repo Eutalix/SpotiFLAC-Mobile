@@ -1051,6 +1051,8 @@ void removeItem(String id) {
 
   /// Export failed downloads to a TXT file
   /// Returns the file path if successful, null otherwise
+  /// Uses daily files: same day = append to existing file, new day = new file
+  /// Saves to 'failed_downloads' subfolder to keep organized
   Future<String?> exportFailedDownloads() async {
     final failedItems = state.items
         .where((item) => item.status == DownloadStatus.failed)
@@ -1062,38 +1064,62 @@ void removeItem(String id) {
     }
 
     try {
-      final buffer = StringBuffer();
-      buffer.writeln('# SpotiFLAC Failed Downloads');
-      buffer.writeln('# Exported: ${DateTime.now().toIso8601String()}');
-      buffer.writeln('# Total: ${failedItems.length} tracks');
-      buffer.writeln('#');
-      buffer.writeln('# Format: Track - Artist | Spotify URL | Error');
-      buffer.writeln('');
+      // Get base download directory
+      String baseDir = state.outputDir;
+      if (baseDir.isEmpty) {
+        final dir = await getApplicationDocumentsDirectory();
+        baseDir = dir.path;
+      }
 
+      // Create failed_downloads subfolder
+      final failedDownloadsDir = '$baseDir/failed_downloads';
+      final failedDir = Directory(failedDownloadsDir);
+      if (!await failedDir.exists()) {
+        await failedDir.create(recursive: true);
+      }
+
+      // Use date-only format for daily grouping (YYYY-MM-DD)
+      final now = DateTime.now();
+      final dateStr = '${now.year}-${now.month.toString().padLeft(2, '0')}-${now.day.toString().padLeft(2, '0')}';
+      final fileName = 'failed_downloads_$dateStr.txt';
+      final filePath = '$failedDownloadsDir/$fileName';
+
+      final file = File(filePath);
+      final bool fileExists = await file.exists();
+
+      // Build content for new entries
+      final buffer = StringBuffer();
+      
+      if (!fileExists) {
+        // New file - add header
+        buffer.writeln('# SpotiFLAC Failed Downloads');
+        buffer.writeln('# Date: $dateStr');
+        buffer.writeln('#');
+        buffer.writeln('# Format: [Time] Track - Artist | URL | Error');
+        buffer.writeln('');
+      }
+
+      // Add timestamp for this batch
+      final timeStr = '${now.hour.toString().padLeft(2, '0')}:${now.minute.toString().padLeft(2, '0')}:${now.second.toString().padLeft(2, '0')}';
+      
       for (final item in failedItems) {
         final track = item.track;
         final spotifyUrl = track.id.startsWith('deezer:')
             ? 'https://www.deezer.com/track/${track.id.substring(7)}'
             : 'https://open.spotify.com/track/${track.id}';
         final error = item.error ?? 'Unknown error';
-        buffer.writeln('${track.name} - ${track.artistName} | $spotifyUrl | $error');
+        buffer.writeln('[$timeStr] ${track.name} - ${track.artistName} | $spotifyUrl | $error');
       }
 
-      // Save to download directory
-      String exportDir = state.outputDir;
-      if (exportDir.isEmpty) {
-        final dir = await getApplicationDocumentsDirectory();
-        exportDir = dir.path;
+      // Append or create file
+      if (fileExists) {
+        await file.writeAsString(buffer.toString(), mode: FileMode.append);
+        _log.i('Appended ${failedItems.length} failed downloads to: $filePath');
+      } else {
+        await file.writeAsString(buffer.toString());
+        _log.i('Created new failed downloads file: $filePath');
       }
 
-      final timestamp = DateTime.now().toIso8601String().replaceAll(':', '-').split('.').first;
-      final fileName = 'failed_downloads_$timestamp.txt';
-      final filePath = '$exportDir/$fileName';
-
-      final file = File(filePath);
-      await file.writeAsString(buffer.toString());
-
-      _log.i('Exported ${failedItems.length} failed downloads to: $filePath');
       return filePath;
     } catch (e) {
       _log.e('Failed to export failed downloads: $e');
