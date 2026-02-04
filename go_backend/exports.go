@@ -194,7 +194,6 @@ func DownloadTrack(requestJSON string) (string, error) {
 		return errorResponse("Invalid request: " + err.Error())
 	}
 
-	// Trim whitespace from string fields to prevent filename/path issues
 	req.TrackName = strings.TrimSpace(req.TrackName)
 	req.ArtistName = strings.TrimSpace(req.ArtistName)
 	req.AlbumName = strings.TrimSpace(req.AlbumName)
@@ -1447,8 +1446,8 @@ func CustomSearchWithExtensionJSON(extensionID, query string, optionsJSON string
 			"disc_number":  track.DiscNumber,
 			"isrc":         track.ISRC,
 			"provider_id":  track.ProviderID,
-			"item_type":    track.ItemType,  // track, album, or playlist
-			"album_type":   track.AlbumType, // album, single, ep, compilation
+			"item_type":    track.ItemType,
+			"album_type":   track.AlbumType,
 		}
 	}
 
@@ -1544,7 +1543,6 @@ func HandleURLWithExtensionJSON(url string) (string, error) {
 		response["tracks"] = tracks
 	}
 
-	// Add album info if present
 	if result.Album != nil {
 		response["album"] = map[string]interface{}{
 			"id":           result.Album.ID,
@@ -1662,7 +1660,6 @@ func GetAlbumWithExtensionJSON(extensionID, albumID string) (string, error) {
 		if trackCover == "" {
 			trackCover = album.CoverURL
 		}
-		// Use track number from extension, fallback to index+1 if not provided
 		trackNum := track.TrackNumber
 		if trackNum == 0 {
 			trackNum = i + 1
@@ -1840,7 +1837,6 @@ func GetArtistWithExtensionJSON(extensionID, artistID string) (string, error) {
 		"provider_id": artist.ProviderID,
 	}
 
-	// Add header image if present
 	if artist.HeaderImage != "" {
 		response["header_image"] = artist.HeaderImage
 	}
@@ -1849,7 +1845,6 @@ func GetArtistWithExtensionJSON(extensionID, artistID string) (string, error) {
 		response["listeners"] = artist.Listeners
 	}
 
-	// Add top tracks if present
 	if len(artist.TopTracks) > 0 {
 		topTracks := make([]map[string]interface{}, len(artist.TopTracks))
 		for i, track := range artist.TopTracks {

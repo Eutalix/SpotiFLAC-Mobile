@@ -28,13 +28,12 @@ class UnifiedLibraryItem {
   final String artistName;
   final String albumName;
   final String? coverUrl;
-  final String? localCoverPath; // For local library items with extracted cover
+  final String? localCoverPath;
   final String filePath;
   final String? quality;
   final DateTime addedAt;
   final LibraryItemSource source;
   
-  // Original items for navigation
   final DownloadHistoryItem? historyItem;
   final LocalLibraryItem? localItem;
 
@@ -258,7 +257,6 @@ class _QueueTabState extends ConsumerState<QueueTab> {
     'Dec',
   ];
 
-// Search functionality
   final TextEditingController _searchController = TextEditingController();
   final FocusNode _searchFocusNode = FocusNode();
   String _searchQuery = '';

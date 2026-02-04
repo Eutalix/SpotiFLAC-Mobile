@@ -31,8 +31,8 @@ type ExtTrackMetadata struct {
 	DiscNumber  int    `json:"disc_number,omitempty"`
 	ISRC        string `json:"isrc,omitempty"`
 	ProviderID  string `json:"provider_id"`
-	ItemType    string `json:"item_type,omitempty"`  // track, album, or playlist - for extension search results
-	AlbumType   string `json:"album_type,omitempty"` // album, single, ep, compilation
+	ItemType    string `json:"item_type,omitempty"`
+	AlbumType   string `json:"album_type,omitempty"`
 	// Enrichment fields from Odesli/song.link
 	TidalID       string            `json:"tidal_id,omitempty"`
 	QobuzID       string            `json:"qobuz_id,omitempty"`
@@ -176,7 +176,6 @@ func (p *ExtensionProviderWrapper) SearchTracks(query string, limit int) (*ExtSe
 		return nil, fmt.Errorf("searchTracks returned null")
 	}
 
-	// Convert result to Go struct
 	exported := result.Export()
 	jsonBytes, err := json.Marshal(exported)
 	if err != nil {
@@ -379,7 +378,7 @@ func (p *ExtensionProviderWrapper) EnrichTrack(track *ExtTrackMetadata) (*ExtTra
 	trackJSON, err := json.Marshal(track)
 	if err != nil {
 		GoLog("[Extension] EnrichTrack: failed to marshal track: %v\n", err)
-		return track, nil // Return original on error
+		return track, nil
 	}
 
 	script := fmt.Sprintf(`
@@ -399,7 +398,7 @@ func (p *ExtensionProviderWrapper) EnrichTrack(track *ExtTrackMetadata) (*ExtTra
 		} else {
 			GoLog("[Extension] EnrichTrack error for %s: %v\n", p.extension.ID, err)
 		}
-		return track, nil // Return original on error
+		return track, nil
 	}
 
 	// If extension doesn't implement enrichTrack or returns null, return original
@@ -843,14 +842,12 @@ func DownloadWithExtensionFallback(req DownloadRequest) (*DownloadResponse, erro
 			provider := NewExtensionProviderWrapper(ext)
 
 			// For tracks from extension search, use the track ID directly (e.g., "youtube:VIDEO_ID")
-			// The extension already knows how to handle this ID
-			trackID := req.SpotifyID // This contains the extension's track ID (e.g., "youtube:xxx")
+			trackID := req.SpotifyID
 
 			GoLog("[DownloadWithExtensionFallback] Downloading from source extension with trackID: %s (skipBuiltInFallback: %v)\n", trackID, skipBuiltIn)
 
 			outputPath := buildOutputPath(req)
 
-			// Download directly using the track ID from the extension
 			result, err := provider.Download(trackID, req.Quality, outputPath, func(percent int) {
 				if req.ItemID != "" {
 					SetItemProgress(req.ItemID, float64(percent), 0, 0)
@@ -879,7 +876,6 @@ func DownloadWithExtensionFallback(req DownloadRequest) (*DownloadResponse, erro
 					}
 				}
 
-				// If extension has skipMetadataEnrichment, copy metadata
 				if ext.Manifest.SkipMetadataEnrichment {
 					resp.SkipMetadataEnrichment = true
 					if result.Title != "" {
@@ -946,12 +942,10 @@ func DownloadWithExtensionFallback(req DownloadRequest) (*DownloadResponse, erro
 
 	// Continue with priority list
 	for _, providerID := range priority {
-		// Skip if we already tried this as source
 		if providerID == req.Source {
 			continue
 		}
 
-		// Skip built-in providers if skipBuiltIn is set
 		if skipBuiltIn && isBuiltInProvider(providerID) {
 			GoLog("[DownloadWithExtensionFallback] Skipping built-in provider %s (skipBuiltInFallback)\n", providerID)
 			continue
@@ -1065,7 +1059,6 @@ func DownloadWithExtensionFallback(req DownloadRequest) (*DownloadResponse, erro
 					}
 				}
 
-				// If extension has skipMetadataEnrichment and returned metadata, use it
 				if ext.Manifest.SkipMetadataEnrichment {
 					resp.SkipMetadataEnrichment = true
 					// Copy metadata from extension result if provided
@@ -1276,7 +1269,6 @@ func (p *ExtensionProviderWrapper) CustomSearch(query string, options map[string
 	}
 
 	if result == nil || goja.IsUndefined(result) || goja.IsNull(result) {
-		// Return empty array instead of error for no results
 		return []ExtTrackMetadata{}, nil
 	}
 
@@ -1291,7 +1283,6 @@ func (p *ExtensionProviderWrapper) CustomSearch(query string, options map[string
 		return nil, fmt.Errorf("failed to parse search result: %w", err)
 	}
 
-	// Return empty array if no tracks found
 	if tracks == nil {
 		tracks = []ExtTrackMetadata{}
 	}
@@ -1362,7 +1353,6 @@ func (p *ExtensionProviderWrapper) HandleURL(url string) (*ExtURLHandleResult, e
 		return nil, fmt.Errorf("failed to parse URL handle result: %w", err)
 	}
 
-	// Set provider ID on tracks
 	if handleResult.Track != nil {
 		handleResult.Track.ProviderID = p.extension.ID
 	}

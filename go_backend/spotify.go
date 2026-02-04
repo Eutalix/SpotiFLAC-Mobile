@@ -63,7 +63,6 @@ var (
 	credentialsMu      sync.RWMutex
 )
 
-// ErrNoSpotifyCredentials is returned when Spotify credentials are not configured
 var ErrNoSpotifyCredentials = errors.New("Spotify credentials not configured. Please set your own Client ID and Secret in Settings, or use Deezer as metadata source (free, no credentials required)")
 
 func SetSpotifyCredentials(clientID, clientSecret string) {
@@ -141,7 +140,7 @@ type TrackMetadata struct {
 	DiscNumber  int    `json:"disc_number,omitempty"`
 	ExternalURL string `json:"external_urls"`
 	ISRC        string `json:"isrc"`
-	AlbumType   string `json:"album_type,omitempty"` // album, single, ep, compilation
+	AlbumType   string `json:"album_type,omitempty"`
 }
 
 type AlbumTrackMetadata struct {
@@ -210,7 +209,7 @@ type ArtistAlbumMetadata struct {
 	ReleaseDate string `json:"release_date"`
 	TotalTracks int    `json:"total_tracks"`
 	Images      string `json:"images"`
-	AlbumType   string `json:"album_type"` // album, single, compilation
+	AlbumType   string `json:"album_type"`
 	Artists     string `json:"artists"`
 }
 
@@ -532,7 +531,6 @@ func (c *SpotifyMetadataClient) fetchAlbum(ctx context.Context, albumID, token s
 
 	albumImage := firstImageURL(data.Images)
 
-	// Get first artist ID
 	var firstArtistId string
 	if len(data.Artists) > 0 {
 		firstArtistId = data.Artists[0].ID
@@ -565,7 +563,6 @@ func (c *SpotifyMetadataClient) fetchAlbum(ctx context.Context, albumID, token s
 
 	fmt.Printf("[Spotify] Album has %d tracks (total: %d)\n", len(allTrackItems), data.TotalTracks)
 
-	// Collect track IDs for parallel ISRC fetching
 	trackIDs := make([]string, len(allTrackItems))
 	for i, item := range allTrackItems {
 		trackIDs[i] = item.ID

@@ -695,7 +695,6 @@ child: ListTile(
   void _handleTap(BuildContext context, WidgetRef ref, {required bool isQueued, required bool isInHistory, required bool isInLocalLibrary}) async {
     if (isQueued) return;
     
-    // Check if track already exists in local library
     if (isInLocalLibrary) {
       if (context.mounted) {
         ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(context.l10n.snackbarAlreadyInLibrary(track.name))));

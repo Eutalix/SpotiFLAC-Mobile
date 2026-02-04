@@ -6,7 +6,6 @@ import 'package:spotiflac_android/utils/logger.dart';
 
 final _log = AppLogger('LibraryDatabase');
 
-/// Represents a track in the user's local music library
 class LocalLibraryItem {
   final String id;
   final String trackName;
@@ -14,7 +13,7 @@ class LocalLibraryItem {
   final String albumName;
   final String? albumArtist;
   final String filePath;
-  final String? coverPath; // Path to extracted cover art
+  final String? coverPath;
   final DateTime scannedAt;
   final String? isrc;
   final int? trackNumber;
@@ -92,7 +91,6 @@ class LocalLibraryItem {
   String get albumKey => '${albumName.toLowerCase()}|${(albumArtist ?? artistName).toLowerCase()}';
 }
 
-/// SQLite database service for local library
 class LibraryDatabase {
   static final LibraryDatabase instance = LibraryDatabase._init();
   static Database? _database;
@@ -144,7 +142,6 @@ class LibraryDatabase {
       )
     ''');
     
-    // Indexes for fast lookups
     await db.execute('CREATE INDEX idx_library_isrc ON library(isrc)');
     await db.execute('CREATE INDEX idx_library_track_artist ON library(track_name, artist_name)');
     await db.execute('CREATE INDEX idx_library_album ON library(album_name, album_artist)');
@@ -163,7 +160,6 @@ class LibraryDatabase {
     }
   }
   
-  /// Convert JSON format (camelCase) to DB row (snake_case)
   Map<String, dynamic> _jsonToDbRow(Map<String, dynamic> json) {
     return {
       'id': json['id'],
@@ -186,7 +182,6 @@ class LibraryDatabase {
     };
   }
   
-  /// Convert DB row (snake_case) to JSON format (camelCase)
   Map<String, dynamic> _dbRowToJson(Map<String, dynamic> row) {
     return {
       'id': row['id'],
@@ -209,9 +204,8 @@ class LibraryDatabase {
     };
   }
   
-  // ==================== CRUD Operations ====================
+  // CRUD Operations
   
-  /// Insert or update a library item
   Future<void> upsert(Map<String, dynamic> json) async {
     final db = await database;
     await db.insert(
@@ -221,7 +215,6 @@ class LibraryDatabase {
     );
   }
   
-  /// Batch insert multiple items
   Future<void> upsertBatch(List<Map<String, dynamic>> items) async {
     final db = await database;
     final batch = db.batch();
@@ -238,7 +231,6 @@ class LibraryDatabase {
     _log.i('Batch inserted ${items.length} items');
   }
   
-  /// Get all library items ordered by album/artist
   Future<List<Map<String, dynamic>>> getAll({int? limit, int? offset}) async {
     final db = await database;
     final rows = await db.query(
@@ -250,7 +242,6 @@ class LibraryDatabase {
     return rows.map(_dbRowToJson).toList();
   }
   
-  /// Get item by ID
   Future<Map<String, dynamic>?> getById(String id) async {
     final db = await database;
     final rows = await db.query(
@@ -263,7 +254,6 @@ class LibraryDatabase {
     return _dbRowToJson(rows.first);
   }
   
-  /// Get item by ISRC - O(1) with index
   Future<Map<String, dynamic>?> getByIsrc(String isrc) async {
     final db = await database;
     final rows = await db.query(
@@ -276,7 +266,6 @@ class LibraryDatabase {
     return _dbRowToJson(rows.first);
   }
   
-  /// Check if ISRC exists - O(1) with index
   Future<bool> existsByIsrc(String isrc) async {
     final db = await database;
     final result = await db.rawQuery(
@@ -286,7 +275,6 @@ class LibraryDatabase {
     return result.isNotEmpty;
   }
   
-  /// Find by track name and artist (fuzzy match)
   Future<List<Map<String, dynamic>>> findByTrackAndArtist(
     String trackName,
     String artistName,
@@ -300,7 +288,6 @@ class LibraryDatabase {
     return rows.map(_dbRowToJson).toList();
   }
   
-  /// Check if track exists by name and artist
   Future<Map<String, dynamic>?> findExisting({
     String? isrc,
     String? trackName,
@@ -321,7 +308,6 @@ class LibraryDatabase {
     return null;
   }
   
-  /// Get all ISRCs as Set for fast in-memory lookup
   Future<Set<String>> getAllIsrcs() async {
     final db = await database;
     final rows = await db.rawQuery(
@@ -330,7 +316,6 @@ class LibraryDatabase {
     return rows.map((r) => r['isrc'] as String).toSet();
   }
   
-  /// Get all track keys (name|artist) for matching
   Future<Set<String>> getAllTrackKeys() async {
     final db = await database;
     final rows = await db.rawQuery(
@@ -339,19 +324,16 @@ class LibraryDatabase {
     return rows.map((r) => r['match_key'] as String).toSet();
   }
   
-  /// Delete by file path
   Future<void> deleteByPath(String filePath) async {
     final db = await database;
     await db.delete('library', where: 'file_path = ?', whereArgs: [filePath]);
   }
   
-  /// Delete by ID
   Future<void> delete(String id) async {
     final db = await database;
     await db.delete('library', where: 'id = ?', whereArgs: [id]);
   }
   
-  /// Delete items where file no longer exists
   Future<int> cleanupMissingFiles() async {
     final db = await database;
     final rows = await db.query('library', columns: ['id', 'file_path']);
@@ -371,21 +353,18 @@ class LibraryDatabase {
     return removed;
   }
   
-  /// Clear all library data
   Future<void> clearAll() async {
     final db = await database;
     await db.delete('library');
     _log.i('Cleared all library data');
   }
   
-  /// Get total count
   Future<int> getCount() async {
     final db = await database;
     final result = await db.rawQuery('SELECT COUNT(*) as count FROM library');
     return Sqflite.firstIntValue(result) ?? 0;
   }
   
-  /// Search library by query
   Future<List<Map<String, dynamic>>> search(String query, {int limit = 50}) async {
     final db = await database;
     final searchQuery = '%${query.toLowerCase()}%';
@@ -399,7 +378,6 @@ class LibraryDatabase {
     return rows.map(_dbRowToJson).toList();
   }
   
-  /// Close database
   Future<void> close() async {
     final db = await database;
     await db.close();

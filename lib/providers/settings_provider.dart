@@ -292,7 +292,6 @@ void setUseAllFilesAccess(bool enabled) {
     _saveSettings();
   }
 
-  // Local Library Settings
   void setLocalLibraryEnabled(bool enabled) {
     state = state.copyWith(localLibraryEnabled: enabled);
     _saveSettings();

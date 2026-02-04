@@ -1034,14 +1034,12 @@ void removeItem(String id) {
     }
 
     try {
-      // Get base download directory
       String baseDir = state.outputDir;
       if (baseDir.isEmpty) {
         final dir = await getApplicationDocumentsDirectory();
         baseDir = dir.path;
       }
 
-      // Create failed_downloads subfolder
       final failedDownloadsDir = '$baseDir/failed_downloads';
       final failedDir = Directory(failedDownloadsDir);
       if (!await failedDir.exists()) {
@@ -1057,11 +1055,9 @@ void removeItem(String id) {
       final file = File(filePath);
       final bool fileExists = await file.exists();
 
-      // Build content for new entries
       final buffer = StringBuffer();
       
       if (!fileExists) {
-        // New file - add header
         buffer.writeln('# SpotiFLAC Failed Downloads');
         buffer.writeln('# Date: $dateStr');
         buffer.writeln('#');
@@ -1069,7 +1065,6 @@ void removeItem(String id) {
         buffer.writeln('');
       }
 
-      // Add timestamp for this batch
       final timeStr = '${now.hour.toString().padLeft(2, '0')}:${now.minute.toString().padLeft(2, '0')}:${now.second.toString().padLeft(2, '0')}';
       
       for (final item in failedItems) {
@@ -1081,7 +1076,6 @@ void removeItem(String id) {
         buffer.writeln('[$timeStr] ${track.name} - ${track.artistName} | $spotifyUrl | $error');
       }
 
-      // Append or create file
       if (fileExists) {
         await file.writeAsString(buffer.toString(), mode: FileMode.append);
         _log.i('Appended ${failedItems.length} failed downloads to: $filePath');
@@ -1553,7 +1547,6 @@ void removeItem(String id) {
 
       _log.d('Opus Metadata map content: $metadata');
 
-      // Handle lyrics based on lyricsMode setting
       final lyricsMode = settings.lyricsMode;
       final shouldEmbed = lyricsMode == 'embed' || lyricsMode == 'both';
       final shouldSaveExternal = lyricsMode == 'external' || lyricsMode == 'both';
@@ -1571,13 +1564,11 @@ void removeItem(String id) {
           );
 
           if (lrcContent.isNotEmpty) {
-            // Embed lyrics in file metadata if mode is 'embed' or 'both'
             if (shouldEmbed) {
               metadata['LYRICS'] = lrcContent;
               _log.d('Lyrics fetched for Opus embedding (${lrcContent.length} chars)');
             }
             
-            // Save external LRC file if mode is 'external' or 'both'
             if (shouldSaveExternal) {
               try {
                 final lrcPath = opusPath.replaceAll(RegExp(r'\.opus$', caseSensitive: false), '.lrc');
@@ -2137,7 +2128,6 @@ result = await PlatformBridge.downloadWithExtensions(
                 progress: 0.95,
               );
               
-              // Convert M4A to the selected format
               final format = tidalHighFormat.startsWith('opus') ? 'opus' : 'mp3';
               final convertedPath = await FFmpegService.convertM4aToLossy(
                 filePath,
@@ -2154,7 +2144,6 @@ result = await PlatformBridge.downloadWithExtensions(
                 actualQuality = '${format.toUpperCase()} $bitrateDisplay';
                 _log.i('Successfully converted M4A to $format: $convertedPath');
                 
-                // Embed metadata
                 _log.i('Embedding metadata to $format...');
                 updateItemStatus(
                   item.id,
@@ -2333,13 +2322,11 @@ result = await PlatformBridge.downloadWithExtensions(
 
         _completedInSession++;
         
-        // Check if this track is already in download history
         final historyNotifier = ref.read(downloadHistoryProvider.notifier);
         final existingInHistory = historyNotifier.getBySpotifyId(trackToDownload.id) ??
             (trackToDownload.isrc != null ? historyNotifier.getByIsrc(trackToDownload.isrc!) : null);
         
         if (wasExisting && existingInHistory != null) {
-          // File exists and is already in download history - skip adding
           _log.i('Track already in library, skipping history update');
           await _notificationService.showDownloadComplete(
             trackName: item.track.name,

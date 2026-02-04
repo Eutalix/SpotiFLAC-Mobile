@@ -54,17 +54,14 @@ func ReadID3Tags(filePath string) (*AudioMetadata, error) {
 
 	metadata := &AudioMetadata{}
 
-	// Try ID3v2 first (at beginning of file)
 	id3v2, err := readID3v2(file)
 	if err == nil && id3v2 != nil {
 		metadata = id3v2
 	}
 
-	// If ID3v2 failed or is incomplete, try ID3v1 (at end of file)
 	if metadata.Title == "" || metadata.Artist == "" {
 		id3v1, err := readID3v1(file)
 		if err == nil && id3v1 != nil {
-			// Fill in missing fields
 			if metadata.Title == "" {
 				metadata.Title = id3v1.Title
 			}
@@ -94,35 +91,28 @@ func ReadID3Tags(filePath string) (*AudioMetadata, error) {
 func readID3v2(file *os.File) (*AudioMetadata, error) {
 	file.Seek(0, io.SeekStart)
 
-	// Read ID3v2 header (10 bytes)
 	header := make([]byte, 10)
 	if _, err := io.ReadFull(file, header); err != nil {
 		return nil, err
 	}
 
-	// Check for "ID3" identifier
 	if string(header[0:3]) != "ID3" {
 		return nil, fmt.Errorf("no ID3v2 header")
 	}
 
-	// Get version
 	majorVersion := header[3]
-	// minorVersion := header[4]
 	flags := header[5]
 	unsync := (flags & 0x80) != 0
 	extendedHeader := (flags & 0x40) != 0
 	footerPresent := (flags & 0x10) != 0
 
-	// Get tag size (syncsafe integer)
 	size := int(header[6])<<21 | int(header[7])<<14 | int(header[8])<<7 | int(header[9])
 
-	// Read all tag data
 	tagData := make([]byte, size)
 	if _, err := io.ReadFull(file, tagData); err != nil {
 		return nil, err
 	}
 
-	// Remove footer if present (10 bytes, starts with "3DI")
 	if footerPresent && len(tagData) >= 10 {
 		footerStart := len(tagData) - 10
 		if footerStart >= 0 && string(tagData[footerStart:footerStart+3]) == "3DI" {
@@ -130,7 +120,6 @@ func readID3v2(file *os.File) (*AudioMetadata, error) {
 		}
 	}
 
-	// Skip extended header if present
 	if extendedHeader {
 		if skip := extendedHeaderSize(tagData, majorVersion); skip > 0 && skip < len(tagData) {
 			tagData = tagData[skip:]
@@ -139,11 +128,9 @@ func readID3v2(file *os.File) (*AudioMetadata, error) {
 
 	metadata := &AudioMetadata{}
 
-	// Parse frames based on version
 	if majorVersion == 2 {
 		parseID3v22Frames(tagData, metadata, unsync)
 	} else {
-		// ID3v2.3 and ID3v2.4
 		parseID3v23Frames(tagData, metadata, majorVersion, unsync)
 	}
 
@@ -156,7 +143,7 @@ func parseID3v22Frames(data []byte, metadata *AudioMetadata, tagUnsync bool) {
 	for pos+6 < len(data) {
 		frameID := string(data[pos : pos+3])
 		if frameID[0] == 0 {
-			break // Padding
+			break
 		}
 
 		frameSize := int(data[pos+3])<<16 | int(data[pos+4])<<8 | int(data[pos+5])
@@ -171,21 +158,21 @@ func parseID3v22Frames(data []byte, metadata *AudioMetadata, tagUnsync bool) {
 		value := firstTextValue(extractTextFrame(frameData))
 
 		switch frameID {
-		case "TT2": // Title
+		case "TT2":
 			metadata.Title = value
-		case "TP1": // Artist
+		case "TP1":
 			metadata.Artist = value
-		case "TP2": // Album Artist
+		case "TP2":
 			metadata.AlbumArtist = value
-		case "TAL": // Album
+		case "TAL":
 			metadata.Album = value
-		case "TYE": // Year
+		case "TYE":
 			metadata.Year = value
-		case "TCO": // Genre
+		case "TCO":
 			metadata.Genre = cleanGenre(value)
-		case "TRK": // Track
+		case "TRK":
 			metadata.TrackNumber = parseTrackNumber(value)
-		case "TPA": // Disc
+		case "TPA":
 			metadata.DiscNumber = parseTrackNumber(value)
 		}
 
@@ -199,7 +186,7 @@ func parseID3v23Frames(data []byte, metadata *AudioMetadata, version byte, tagUn
 	for pos+10 < len(data) {
 		frameID := string(data[pos : pos+4])
 		if frameID[0] == 0 {
-			break // Padding
+			break
 		}
 
 		var frameSize int
@@ -238,7 +225,7 @@ func parseID3v23Frames(data []byte, metadata *AudioMetadata, version byte, tagUn
 					pos += 10 + frameSize
 					continue
 				}
-				frameData = frameData[1:] // skip group ID
+				frameData = frameData[1:]
 			}
 			if tagUnsync {
 				frameData = removeUnsync(frameData)
@@ -246,18 +233,18 @@ func parseID3v23Frames(data []byte, metadata *AudioMetadata, version byte, tagUn
 		} else if version == 4 {
 			// ID3v2.4 format flags: grouping, compression, encryption, unsync, data length indicator
 			const (
-				id3v24FlagGrouping      = 0x40
-				id3v24FlagCompression   = 0x08
-				id3v24FlagEncryption    = 0x04
-				id3v24FlagUnsync        = 0x02
-				id3v24FlagDataLen       = 0x01
+				id3v24FlagGrouping    = 0x40
+				id3v24FlagCompression = 0x08
+				id3v24FlagEncryption  = 0x04
+				id3v24FlagUnsync      = 0x02
+				id3v24FlagDataLen     = 0x01
 			)
 			if formatFlags&id3v24FlagGrouping != 0 {
 				if len(frameData) < 1 {
 					pos += 10 + frameSize
 					continue
 				}
-				frameData = frameData[1:] // skip group ID
+				frameData = frameData[1:]
 			}
 			if formatFlags&id3v24FlagDataLen != 0 {
 				if len(frameData) < 4 {
@@ -278,26 +265,26 @@ func parseID3v23Frames(data []byte, metadata *AudioMetadata, version byte, tagUn
 		value := firstTextValue(extractTextFrame(frameData))
 
 		switch frameID {
-		case "TIT2": // Title
+		case "TIT2":
 			metadata.Title = value
-		case "TPE1": // Artist
+		case "TPE1":
 			metadata.Artist = value
-		case "TPE2": // Album Artist
+		case "TPE2":
 			metadata.AlbumArtist = value
-		case "TALB": // Album
+		case "TALB":
 			metadata.Album = value
-		case "TYER", "TDRC": // Year
+		case "TYER", "TDRC":
 			metadata.Year = value
 			if len(value) >= 4 {
 				metadata.Date = value
 			}
-		case "TCON": // Genre
+		case "TCON":
 			metadata.Genre = cleanGenre(value)
-		case "TRCK": // Track
+		case "TRCK":
 			metadata.TrackNumber = parseTrackNumber(value)
-		case "TPOS": // Disc
+		case "TPOS":
 			metadata.DiscNumber = parseTrackNumber(value)
-		case "TSRC": // ISRC
+		case "TSRC":
 			metadata.ISRC = value
 		}
 
@@ -307,7 +294,6 @@ func parseID3v23Frames(data []byte, metadata *AudioMetadata, version byte, tagUn
 
 // readID3v1 reads ID3v1 tag from end of file
 func readID3v1(file *os.File) (*AudioMetadata, error) {
-	// Seek to last 128 bytes
 	if _, err := file.Seek(-128, io.SeekEnd); err != nil {
 		return nil, err
 	}
@@ -317,7 +303,6 @@ func readID3v1(file *os.File) (*AudioMetadata, error) {
 		return nil, err
 	}
 
-	// Check for "TAG" identifier
 	if string(tag[0:3]) != "TAG" {
 		return nil, fmt.Errorf("no ID3v1 tag")
 	}
@@ -334,7 +319,6 @@ func readID3v1(file *os.File) (*AudioMetadata, error) {
 		metadata.TrackNumber = int(tag[126])
 	}
 
-	// Genre index
 	genreIndex := int(tag[127])
 	if genreIndex < len(id3v1Genres) {
 		metadata.Genre = id3v1Genres[genreIndex]
@@ -372,7 +356,6 @@ func decodeUTF16(data []byte) string {
 		return ""
 	}
 
-	// Check BOM
 	var littleEndian bool
 	if data[0] == 0xFF && data[1] == 0xFE {
 		littleEndian = true
@@ -424,7 +407,6 @@ func cleanGenre(genre string) string {
 		if end > 0 {
 			numStr := genre[1:end]
 			if num, err := strconv.Atoi(numStr); err == nil && num < len(id3v1Genres) {
-				// If there's text after the number, use it
 				if end+1 < len(genre) {
 					return genre[end+1:]
 				}
@@ -513,14 +495,12 @@ func GetMP3Quality(filePath string) (*MP3Quality, error) {
 
 	quality := &MP3Quality{}
 
-	// Get file size for duration estimation
 	stat, err := file.Stat()
 	if err != nil {
 		return nil, err
 	}
 	fileSize := stat.Size()
 
-	// Skip ID3v2 header if present
 	header := make([]byte, 10)
 	if _, err := io.ReadFull(file, header); err != nil {
 		return nil, err
@@ -532,25 +512,20 @@ func GetMP3Quality(filePath string) (*MP3Quality, error) {
 		audioStart = 10 + tagSize
 	}
 
-	// Seek to audio start
 	file.Seek(audioStart, io.SeekStart)
 
-	// Find first valid MP3 frame
 	frameHeader := make([]byte, 4)
 	for i := 0; i < 10000; i++ { // Search first 10KB
 		if _, err := io.ReadFull(file, frameHeader); err != nil {
 			break
 		}
 
-		// Check for sync word (11 set bits)
 		if frameHeader[0] == 0xFF && (frameHeader[1]&0xE0) == 0xE0 {
-			// Parse frame header
 			version := (frameHeader[1] >> 3) & 0x03
 			layer := (frameHeader[1] >> 1) & 0x03
 			bitrateIdx := (frameHeader[2] >> 4) & 0x0F
 			sampleRateIdx := (frameHeader[2] >> 2) & 0x03
 
-			// Get sample rate
 			sampleRates := [][]int{
 				{11025, 12000, 8000},  // MPEG 2.5
 				{0, 0, 0},             // Reserved
@@ -574,7 +549,7 @@ func GetMP3Quality(filePath string) (*MP3Quality, error) {
 
 			// Estimate duration from file size and bitrate
 			if quality.Bitrate > 0 {
-				audioSize := fileSize - audioStart - 128 // Subtract ID3v1 tag
+				audioSize := fileSize - audioStart - 128
 				if audioSize > 0 {
 					quality.Duration = int(audioSize * 8 / int64(quality.Bitrate))
 				}
@@ -583,7 +558,6 @@ func GetMP3Quality(filePath string) (*MP3Quality, error) {
 			break
 		}
 
-		// Seek back 3 bytes to continue search
 		file.Seek(-3, io.SeekCurrent)
 	}
 
@@ -648,13 +622,11 @@ type oggPage struct {
 
 // readOggPageWithHeader reads a single Ogg page including header info
 func readOggPageWithHeader(file *os.File) (*oggPage, error) {
-	// Read page header
 	header := make([]byte, 27)
 	if _, err := io.ReadFull(file, header); err != nil {
 		return nil, err
 	}
 
-	// Check capture pattern "OggS"
 	if string(header[0:4]) != "OggS" {
 		return nil, fmt.Errorf("not an Ogg page")
 	}
@@ -662,19 +634,16 @@ func readOggPageWithHeader(file *os.File) (*oggPage, error) {
 	headerType := header[5]
 	numSegments := int(header[26])
 
-	// Read segment table
 	segmentTable := make([]byte, numSegments)
 	if _, err := io.ReadFull(file, segmentTable); err != nil {
 		return nil, err
 	}
 
-	// Calculate total page size
 	var pageSize int
 	for _, seg := range segmentTable {
 		pageSize += int(seg)
 	}
 
-	// Read page data
 	pageData := make([]byte, pageSize)
 	if _, err := io.ReadFull(file, pageData); err != nil {
 		return nil, err
@@ -734,7 +703,6 @@ func collectOggPackets(file *os.File, maxPackets, maxPages int) ([][]byte, error
 			}
 
 			if len(cur)+segLen > maxPacketSize {
-				// Skip this oversized packet
 				cur = nil
 				skipPacket = true
 				offset += segLen
@@ -796,7 +764,6 @@ func parseVorbisComments(data []byte, metadata *AudioMetadata) {
 		return
 	}
 
-	// Skip vendor string
 	if vendorLen > uint32(len(data)-4) {
 		return
 	}
@@ -805,20 +772,18 @@ func parseVorbisComments(data []byte, metadata *AudioMetadata) {
 		return
 	}
 
-	// Read comment count
 	var commentCount uint32
 	if err := binary.Read(reader, binary.LittleEndian, &commentCount); err != nil {
 		return
 	}
 
-	// Read each comment
 	for i := uint32(0); i < commentCount && i < 100; i++ {
 		var commentLen uint32
 		if err := binary.Read(reader, binary.LittleEndian, &commentLen); err != nil {
 			break
 		}
 
-		if commentLen > 10000 { // Sanity check
+		if commentLen > 10000 {
 			break
 		}
 
@@ -827,7 +792,6 @@ func parseVorbisComments(data []byte, metadata *AudioMetadata) {
 			break
 		}
 
-		// Parse "KEY=VALUE" format
 		parts := strings.SplitN(string(comment), "=", 2)
 		if len(parts) != 2 {
 			continue
@@ -880,7 +844,6 @@ func GetOggQuality(filePath string) (*OggQuality, error) {
 
 	streamType := detectOggStreamType(packets)
 	if streamType == oggStreamUnknown {
-		// Fallback to file extension
 		if strings.HasSuffix(strings.ToLower(filePath), ".opus") {
 			streamType = oggStreamOpus
 		} else {
@@ -910,7 +873,6 @@ func GetOggQuality(filePath string) (*OggQuality, error) {
 		}
 	}
 
-	// Get file size for duration estimation
 	stat, err := file.Stat()
 	if err == nil {
 		// Very rough duration estimate based on file size
@@ -971,7 +933,6 @@ func extractMP3CoverArt(filePath string) ([]byte, string, error) {
 	}
 	defer file.Close()
 
-	// Read ID3v2 header
 	header := make([]byte, 10)
 	if _, err := io.ReadFull(file, header); err != nil {
 		return nil, "", err
@@ -1044,7 +1005,6 @@ func parseAPICFrame(data []byte, version byte) ([]byte, string) {
 	encoding := data[pos]
 	pos++
 
-	// Read MIME type
 	var mimeType string
 	if version == 2 {
 		// ID3v2.2: 3-byte image format (JPG, PNG)
@@ -1075,8 +1035,6 @@ func parseAPICFrame(data []byte, version byte) ([]byte, string) {
 		return nil, ""
 	}
 
-	// Skip picture type
-	// pictureType := data[pos]
 	pos++
 
 	// Skip description (null-terminated, may be UTF-16)
@@ -1085,7 +1043,7 @@ func parseAPICFrame(data []byte, version byte) ([]byte, string) {
 		for pos < len(data) && data[pos] != 0 {
 			pos++
 		}
-		pos++ // Skip null
+		pos++
 	} else {
 		// UTF-16: look for double null
 		for pos+1 < len(data) {
@@ -1101,7 +1059,6 @@ func parseAPICFrame(data []byte, version byte) ([]byte, string) {
 		return nil, ""
 	}
 
-	// Rest is image data
 	return data[pos:], mimeType
 }
 
@@ -1157,7 +1114,6 @@ func extractPictureFromVorbisComments(data []byte) ([]byte, string) {
 
 	reader := bytes.NewReader(data)
 
-	// Skip vendor string
 	var vendorLen uint32
 	if err := binary.Read(reader, binary.LittleEndian, &vendorLen); err != nil {
 		return nil, ""
@@ -1167,7 +1123,6 @@ func extractPictureFromVorbisComments(data []byte) ([]byte, string) {
 	}
 	reader.Seek(int64(vendorLen), io.SeekCurrent)
 
-	// Read comment count
 	var commentCount uint32
 	if err := binary.Read(reader, binary.LittleEndian, &commentCount); err != nil {
 		return nil, ""
@@ -1188,7 +1143,6 @@ func extractPictureFromVorbisComments(data []byte) ([]byte, string) {
 			break
 		}
 
-		// Check for METADATA_BLOCK_PICTURE=
 		key := "METADATA_BLOCK_PICTURE="
 		if len(comment) > len(key) && strings.ToUpper(string(comment[:len(key)])) == key {
 			// Base64-encoded FLAC picture block
@@ -1200,7 +1154,6 @@ func extractPictureFromVorbisComments(data []byte) ([]byte, string) {
 			}
 			decoded = decoded[:n]
 
-			// Parse FLAC picture block
 			imageData, mimeType := parseFLACPictureBlock(decoded)
 			if len(imageData) > 0 {
 				return imageData, mimeType
@@ -1219,43 +1172,35 @@ func parseFLACPictureBlock(data []byte) ([]byte, string) {
 
 	reader := bytes.NewReader(data)
 
-	// Picture type (4 bytes)
 	var pictureType uint32
 	binary.Read(reader, binary.BigEndian, &pictureType)
 
-	// MIME type length (4 bytes)
 	var mimeLen uint32
 	binary.Read(reader, binary.BigEndian, &mimeLen)
 	if mimeLen > 256 {
 		return nil, ""
 	}
 
-	// MIME type
 	mimeBytes := make([]byte, mimeLen)
 	reader.Read(mimeBytes)
 	mimeType := string(mimeBytes)
 
-	// Description length (4 bytes)
 	var descLen uint32
 	binary.Read(reader, binary.BigEndian, &descLen)
 	if descLen > 10000 {
 		return nil, ""
 	}
 
-	// Skip description
 	reader.Seek(int64(descLen), io.SeekCurrent)
 
-	// Skip width, height, color depth, colors used (16 bytes)
 	reader.Seek(16, io.SeekCurrent)
 
-	// Image data length (4 bytes)
 	var dataLen uint32
 	binary.Read(reader, binary.BigEndian, &dataLen)
 	if dataLen > 10000000 { // 10MB
 		return nil, ""
 	}
 
-	// Image data
 	imageData := make([]byte, dataLen)
 	reader.Read(imageData)
 
@@ -1281,7 +1226,6 @@ func base64StdDecode(dst, src []byte) (int, error) {
 
 	si, di := 0, 0
 	for si < len(src) {
-		// Skip whitespace and newlines
 		for si < len(src) && (src[si] == '\n' || src[si] == '\r' || src[si] == ' ' || src[si] == '\t') {
 			si++
 		}
@@ -1289,7 +1233,6 @@ func base64StdDecode(dst, src []byte) (int, error) {
 			break
 		}
 
-		// Read 4 characters
 		var vals [4]byte
 		var valCount int
 		for valCount < 4 && si < len(src) {
@@ -1310,7 +1253,6 @@ func base64StdDecode(dst, src []byte) (int, error) {
 			break
 		}
 
-		// Decode
 		if di < len(dst) {
 			dst[di] = vals[0]<<2 | vals[1]>>4
 			di++
@@ -1334,7 +1276,6 @@ func extractAnyCoverArt(filePath string) ([]byte, string, error) {
 
 	switch ext {
 	case ".flac":
-		// Use existing ExtractCoverArt function
 		data, err := ExtractCoverArt(filePath)
 		if err != nil {
 			return nil, "", err
@@ -1372,7 +1313,6 @@ func SaveCoverToCache(filePath, cacheDir string) (string, error) {
 	}
 	hash := hashString(cacheKey)
 
-	// Check if cover already cached
 	jpgPath := filepath.Join(cacheDir, fmt.Sprintf("cover_%x.jpg", hash))
 	pngPath := filepath.Join(cacheDir, fmt.Sprintf("cover_%x.png", hash))
 
@@ -1383,18 +1323,15 @@ func SaveCoverToCache(filePath, cacheDir string) (string, error) {
 		return pngPath, nil
 	}
 
-	// Extract cover art
 	imageData, mimeType, err := extractAnyCoverArt(filePath)
 	if err != nil {
 		return "", err
 	}
 
-	// Ensure cache directory exists
 	if err := os.MkdirAll(cacheDir, 0755); err != nil {
 		return "", fmt.Errorf("failed to create cache dir: %w", err)
 	}
 
-	// Determine file extension
 	var cachePath string
 	if strings.Contains(mimeType, "png") {
 		cachePath = pngPath
@@ -1402,7 +1339,6 @@ func SaveCoverToCache(filePath, cacheDir string) (string, error) {
 		cachePath = jpgPath
 	}
 
-	// Write to file
 	if err := os.WriteFile(cachePath, imageData, 0644); err != nil {
 		return "", fmt.Errorf("failed to write cover: %w", err)
 	}

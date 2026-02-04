@@ -117,7 +117,6 @@ class _LibrarySettingsPageState extends ConsumerState<LibrarySettingsPage> {
       return;
     }
 
-    // Check if folder exists
     if (!await Directory(libraryPath).exists()) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(

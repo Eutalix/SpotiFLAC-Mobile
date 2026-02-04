@@ -513,7 +513,6 @@ class _HomeTabState extends ConsumerState<HomeTab> with AutomaticKeepAliveClient
     Extension? currentSearchExtension;
     List<SearchFilter> searchFilters = [];
     
-    // Check if using extension search provider
     final isUsingExtensionSearch = currentSearchProvider != null && 
         currentSearchProvider.isNotEmpty &&
         extState.extensions.any((e) => e.id == currentSearchProvider && e.enabled);
@@ -2567,7 +2566,6 @@ class _TrackItemWithStatus extends ConsumerWidget {
   void _handleTap(BuildContext context, WidgetRef ref, {required bool isQueued, required bool isInHistory, required bool isInLocalLibrary}) async {
     if (isQueued) return;
     
-    // Check if track already exists in local library
     if (isInLocalLibrary) {
       if (context.mounted) {
         ScaffoldMessenger.of(context).showSnackBar(

@@ -46,7 +46,7 @@ var (
 	libraryScanProgressMu sync.RWMutex
 	libraryScanCancel     chan struct{}
 	libraryScanCancelMu   sync.Mutex
-	libraryCoverCacheDir  string // Directory to cache extracted cover art
+	libraryCoverCacheDir  string
 	libraryCoverCacheMu   sync.RWMutex
 )
 
@@ -73,7 +73,6 @@ func ScanLibraryFolder(folderPath string) (string, error) {
 		return "[]", fmt.Errorf("folder path is empty")
 	}
 
-	// Check if folder exists
 	info, err := os.Stat(folderPath)
 	if err != nil {
 		return "[]", fmt.Errorf("folder not found: %w", err)
@@ -82,12 +81,10 @@ func ScanLibraryFolder(folderPath string) (string, error) {
 		return "[]", fmt.Errorf("path is not a folder: %s", folderPath)
 	}
 
-	// Reset progress
 	libraryScanProgressMu.Lock()
 	libraryScanProgress = LibraryScanProgress{}
 	libraryScanProgressMu.Unlock()
 
-	// Create cancel channel
 	libraryScanCancelMu.Lock()
 	if libraryScanCancel != nil {
 		close(libraryScanCancel)
@@ -96,11 +93,10 @@ func ScanLibraryFolder(folderPath string) (string, error) {
 	cancelCh := libraryScanCancel
 	libraryScanCancelMu.Unlock()
 
-	// First pass: count audio files
 	var audioFiles []string
 	err = filepath.Walk(folderPath, func(path string, info os.FileInfo, err error) error {
 		if err != nil {
-			return nil // Skip errors, continue walking
+			return nil
 		}
 
 		select {
@@ -136,7 +132,6 @@ func ScanLibraryFolder(folderPath string) (string, error) {
 
 	GoLog("[LibraryScan] Found %d audio files to scan\n", totalFiles)
 
-	// Second pass: read metadata from each file
 	results := make([]LibraryScanResult, 0, totalFiles)
 	scanTime := time.Now().UTC().Format(time.RFC3339)
 	errorCount := 0
@@ -148,14 +143,12 @@ func ScanLibraryFolder(folderPath string) (string, error) {
 		default:
 		}
 
-		// Update progress
 		libraryScanProgressMu.Lock()
 		libraryScanProgress.ScannedFiles = i + 1
 		libraryScanProgress.CurrentFile = filepath.Base(filePath)
 		libraryScanProgress.ProgressPct = float64(i+1) / float64(totalFiles) * 100
 		libraryScanProgressMu.Unlock()
 
-		// Read metadata
 		result, err := scanAudioFile(filePath, scanTime)
 		if err != nil {
 			errorCount++
@@ -166,7 +159,6 @@ func ScanLibraryFolder(folderPath string) (string, error) {
 		results = append(results, *result)
 	}
 
-	// Mark complete
 	libraryScanProgressMu.Lock()
 	libraryScanProgress.ErrorCount = errorCount
 	libraryScanProgress.IsComplete = true
@@ -193,7 +185,6 @@ func scanAudioFile(filePath, scanTime string) (*LibraryScanResult, error) {
 		Format:    strings.TrimPrefix(ext, "."),
 	}
 
-	// Try to extract and cache cover art
 	libraryCoverCacheMu.RLock()
 	coverCacheDir := libraryCoverCacheDir
 	libraryCoverCacheMu.RUnlock()
@@ -204,7 +195,6 @@ func scanAudioFile(filePath, scanTime string) (*LibraryScanResult, error) {
 		}
 	}
 
-	// Try to read metadata based on format
 	switch ext {
 	case ".flac":
 		return scanFLACFile(filePath, result)
@@ -213,10 +203,8 @@ func scanAudioFile(filePath, scanTime string) (*LibraryScanResult, error) {
 	case ".mp3":
 		return scanMP3File(filePath, result)
 	case ".opus", ".ogg":
-		// Opus files often use same container as Ogg Vorbis
 		return scanOggFile(filePath, result)
 	default:
-		// Fallback: use filename as title
 		return scanFromFilename(filePath, result)
 	}
 }
@@ -225,7 +213,6 @@ func scanAudioFile(filePath, scanTime string) (*LibraryScanResult, error) {
 func scanFLACFile(filePath string, result *LibraryScanResult) (*LibraryScanResult, error) {
 	metadata, err := ReadMetadata(filePath)
 	if err != nil {
-		// Fallback to filename
 		return scanFromFilename(filePath, result)
 	}
 
@@ -239,7 +226,6 @@ func scanFLACFile(filePath string, result *LibraryScanResult) (*LibraryScanResul
 	result.ReleaseDate = metadata.Date
 	result.Genre = metadata.Genre
 
-	// Read audio quality
 	quality, err := GetAudioQuality(filePath)
 	if err == nil {
 		result.BitDepth = quality.BitDepth
@@ -249,7 +235,6 @@ func scanFLACFile(filePath string, result *LibraryScanResult) (*LibraryScanResul
 		}
 	}
 
-	// Ensure we have at least a title
 	if result.TrackName == "" {
 		result.TrackName = strings.TrimSuffix(filepath.Base(filePath), filepath.Ext(filePath))
 	}
@@ -265,14 +250,12 @@ func scanFLACFile(filePath string, result *LibraryScanResult) (*LibraryScanResul
 
 // scanM4AFile reads metadata from M4A/AAC file
 func scanM4AFile(filePath string, result *LibraryScanResult) (*LibraryScanResult, error) {
-	// M4A metadata reading is limited, try audio quality at least
 	quality, err := GetM4AQuality(filePath)
 	if err == nil {
 		result.BitDepth = quality.BitDepth
 		result.SampleRate = quality.SampleRate
 	}
 
-	// Fallback to filename parsing
 	return scanFromFilename(filePath, result)
 }
 
@@ -298,7 +281,6 @@ func scanMP3File(filePath string, result *LibraryScanResult) (*LibraryScanResult
 	}
 	result.ISRC = metadata.ISRC
 
-	// Get audio quality info
 	quality, err := GetMP3Quality(filePath)
 	if err == nil {
 		result.SampleRate = quality.SampleRate
@@ -306,7 +288,6 @@ func scanMP3File(filePath string, result *LibraryScanResult) (*LibraryScanResult
 		result.Duration = quality.Duration
 	}
 
-	// Ensure we have at least a title
 	if result.TrackName == "" {
 		result.TrackName = strings.TrimSuffix(filepath.Base(filePath), filepath.Ext(filePath))
 	}
@@ -338,7 +319,6 @@ func scanOggFile(filePath string, result *LibraryScanResult) (*LibraryScanResult
 	result.Genre = metadata.Genre
 	result.ReleaseDate = metadata.Date
 
-	// Get audio quality info
 	quality, err := GetOggQuality(filePath)
 	if err == nil {
 		result.SampleRate = quality.SampleRate
@@ -346,7 +326,6 @@ func scanOggFile(filePath string, result *LibraryScanResult) (*LibraryScanResult
 		result.Duration = quality.Duration
 	}
 
-	// Ensure we have at least a title
 	if result.TrackName == "" {
 		result.TrackName = strings.TrimSuffix(filepath.Base(filePath), filepath.Ext(filePath))
 	}
@@ -364,16 +343,8 @@ func scanOggFile(filePath string, result *LibraryScanResult) (*LibraryScanResult
 func scanFromFilename(filePath string, result *LibraryScanResult) (*LibraryScanResult, error) {
 	filename := strings.TrimSuffix(filepath.Base(filePath), filepath.Ext(filePath))
 
-	// Common patterns:
-	// "Artist - Title"
-	// "01 - Title"
-	// "01. Title"
-	// "Title"
-
-	// Try "Artist - Title" pattern
 	parts := strings.SplitN(filename, " - ", 2)
 	if len(parts) == 2 {
-		// Check if first part looks like a track number
 		if len(parts[0]) <= 3 && isNumeric(parts[0]) {
 			result.TrackName = parts[1]
 			result.ArtistName = "Unknown Artist"
@@ -382,9 +353,7 @@ func scanFromFilename(filePath string, result *LibraryScanResult) (*LibraryScanR
 			result.TrackName = parts[1]
 		}
 	} else {
-		// Try "01. Title" or "01 Title" pattern
 		if len(filename) > 3 && isNumeric(filename[:2]) {
-			// Skip track number
 			title := strings.TrimLeft(filename[2:], " .-")
 			result.TrackName = title
 		} else {
@@ -393,7 +362,6 @@ func scanFromFilename(filePath string, result *LibraryScanResult) (*LibraryScanR
 		result.ArtistName = "Unknown Artist"
 	}
 
-	// Use parent folder as album name
 	dir := filepath.Dir(filePath)
 	result.AlbumName = filepath.Base(dir)
 	if result.AlbumName == "." || result.AlbumName == "" {
@@ -415,7 +383,6 @@ func isNumeric(s string) bool {
 
 // generateLibraryID creates a unique ID for a library item
 func generateLibraryID(filePath string) string {
-	// Use file path hash as ID
 	return fmt.Sprintf("lib_%x", hashString(filePath))
 }
 

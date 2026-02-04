@@ -103,7 +103,6 @@ class _ArtistScreenState extends ConsumerState<ArtistScreen> {
   bool _showTitleInAppBar = false;
   final ScrollController _scrollController = ScrollController();
 
-  // Selection mode state
   bool _isSelectionMode = false;
   final Set<String> _selectedAlbumIds = {};
   bool _isFetchingDiscography = false;
@@ -112,7 +111,6 @@ class _ArtistScreenState extends ConsumerState<ArtistScreen> {
   void initState() {
     super.initState();
     
-    // Setup scroll listener for sticky title
     _scrollController.addListener(_onScroll);
     
     WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -322,11 +320,9 @@ return PopScope(
             if (compilations.isNotEmpty) 
               SliverToBoxAdapter(child: _buildAlbumSection(context.l10n.artistCompilations, compilations, colorScheme)),
           ],
-          // Add padding at bottom for selection bar
           SliverToBoxAdapter(child: SizedBox(height: _isSelectionMode ? 120 : 32)),
         ],
       ),
-          // Selection action bar
           if (_isSelectionMode)
             _buildSelectionBar(context, colorScheme, albums),
         ],
@@ -404,14 +400,12 @@ return PopScope(
             padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
             child: Row(
               children: [
-                // Close button
                 IconButton(
                   onPressed: _exitSelectionMode,
                   icon: const Icon(Icons.close),
                   tooltip: context.l10n.dialogCancel,
                 ),
                 const SizedBox(width: 8),
-                // Selection info
                 Expanded(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
@@ -433,13 +427,11 @@ return PopScope(
                     ],
                   ),
                 ),
-                // Select all / Deselect button
                 TextButton(
                   onPressed: allSelected ? _deselectAll : () => _selectAll(allAlbums),
                   child: Text(allSelected ? context.l10n.actionDeselect : context.l10n.actionSelectAll),
                 ),
                 const SizedBox(width: 8),
-                // Download button
                 FilledButton.icon(
                   onPressed: selectedCount > 0 ? () => _downloadSelectedAlbums(context, selectedAlbums) : null,
                   icon: const Icon(Icons.download, size: 18),
@@ -473,7 +465,6 @@ return PopScope(
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              // Handle bar
               Container(
                 width: 40,
                 height: 4,
@@ -483,7 +474,6 @@ return PopScope(
                   borderRadius: BorderRadius.circular(2),
                 ),
               ),
-              // Title
               Padding(
                 padding: const EdgeInsets.fromLTRB(24, 0, 24, 16),
                 child: Row(
@@ -577,7 +567,6 @@ return PopScope(
     
     setState(() => _isFetchingDiscography = true);
 
-    // Show progress dialog
     if (!mounted) {
       setState(() => _isFetchingDiscography = false);
       return;
@@ -599,7 +588,6 @@ return PopScope(
     int fetchedCount = 0;
     int failedCount = 0;
 
-    // Fetch tracks from each album
     for (final album in albums) {
       if (!_isFetchingDiscography) break; // Cancelled
 
@@ -620,12 +608,10 @@ return PopScope(
 
     setState(() => _isFetchingDiscography = false);
 
-    // Close progress dialog
     if (mounted) {
       Navigator.of(context, rootNavigator: true).pop();
     }
 
-    // Show warning if some albums failed
     if (failedCount > 0 && mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text(context.l10n.discographyFailedToFetch)),
@@ -668,14 +654,12 @@ return PopScope(
       return;
     }
 
-    // Add to queue
     ref.read(downloadQueueProvider.notifier).addMultipleToQueue(
       tracksToQueue,
       service,
       qualityOverride: qualityOverride,
     );
 
-    // Show success message
     if (mounted) {
       final message = skippedCount > 0
           ? context.l10n.discographySkippedDownloaded(tracksToQueue.length, skippedCount)
@@ -698,14 +682,12 @@ return PopScope(
 
   Future<List<Track>> _fetchAlbumTracks(ArtistAlbum album) async {
     if (album.providerId != null && album.providerId!.isNotEmpty) {
-      // Extension album
       final result = await PlatformBridge.getAlbumWithExtension(album.providerId!, album.id);
       if (result != null && result['tracks'] != null) {
         final tracksList = result['tracks'] as List<dynamic>;
         return tracksList.map((t) => _parseTrack(t as Map<String, dynamic>)).toList();
       }
     } else if (album.id.startsWith('deezer:')) {
-      // Deezer album
       final deezerId = album.id.replaceFirst('deezer:', '');
       final metadata = await PlatformBridge.getDeezerMetadata('album', deezerId);
       if (metadata['tracks'] != null) {
@@ -713,7 +695,6 @@ return PopScope(
         return tracksList.map((t) => _parseTrackFromDeezer(t as Map<String, dynamic>, album)).toList();
       }
     } else {
-      // Spotify album
       final url = 'https://open.spotify.com/album/${album.id}';
       final result = await PlatformBridge.handleURLWithExtension(url);
       if (result != null && result['tracks'] != null) {
@@ -1068,7 +1049,6 @@ if (hasValidImage)
   void _handlePopularTrackTap(Track track, {required bool isQueued, required bool isInHistory, required bool isInLocalLibrary}) async {
     if (isQueued) return;
     
-    // Check if track already exists in local library
     if (isInLocalLibrary) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(

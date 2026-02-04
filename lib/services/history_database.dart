@@ -139,7 +139,6 @@ class HistoryDatabase {
     final prefs = await _prefs;
     final lastContainer = prefs.getString('ios_last_container_path');
     
-    // Skip if container hasn't changed
     if (lastContainer == _currentContainerPath) {
       _log.d('iOS container path unchanged, skipping migration');
       return false;

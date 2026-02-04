@@ -10,7 +10,6 @@ final _log = AppLogger('LocalLibrary');
 
 const _lastScannedAtKey = 'local_library_last_scanned_at';
 
-/// State for local library
 class LocalLibraryState {
   final List<LocalLibraryItem> items;
   final bool isScanning;
@@ -92,7 +91,6 @@ class LocalLibraryState {
   }
 }
 
-/// Provider for local library state management
 class LocalLibraryNotifier extends Notifier<LocalLibraryState> {
   final LibraryDatabase _db = LibraryDatabase.instance;
   Timer? _progressTimer;
@@ -120,7 +118,6 @@ class LocalLibraryNotifier extends Notifier<LocalLibraryState> {
           .map((e) => LocalLibraryItem.fromJson(e))
           .toList();
       
-      // Load lastScannedAt from SharedPreferences
       DateTime? lastScannedAt;
       try {
         final prefs = await SharedPreferences.getInstance();
@@ -161,7 +158,6 @@ class LocalLibraryNotifier extends Notifier<LocalLibraryState> {
       scanErrorCount: 0,
     );
 
-    // Set cover cache directory before scanning
     try {
       final cacheDir = await getApplicationCacheDirectory();
       final coverCacheDir = '${cacheDir.path}/library_covers';
@@ -171,23 +167,19 @@ class LocalLibraryNotifier extends Notifier<LocalLibraryState> {
       _log.w('Failed to set cover cache directory: $e');
     }
 
-    // Start progress polling
     _startProgressPolling();
 
     try {
       final results = await PlatformBridge.scanLibraryFolder(folderPath);
       
-      // Convert results to LocalLibraryItem and save to database
       final items = <LocalLibraryItem>[];
       for (final json in results) {
         final item = LocalLibraryItem.fromJson(json);
         items.add(item);
       }
 
-      // Batch insert into database
       await _db.upsertBatch(items.map((e) => e.toJson()).toList());
 
-      // Save lastScannedAt to SharedPreferences
       final now = DateTime.now();
       try {
         final prefs = await SharedPreferences.getInstance();
@@ -197,7 +189,6 @@ class LocalLibraryNotifier extends Notifier<LocalLibraryState> {
         _log.w('Failed to save lastScannedAt: $e');
       }
 
-      // Update state
       state = state.copyWith(
         items: items,
         isScanning: false,
@@ -262,7 +253,6 @@ class LocalLibraryNotifier extends Notifier<LocalLibraryState> {
   Future<void> clearLibrary() async {
     await _db.clearAll();
     
-    // Clear lastScannedAt from SharedPreferences
     try {
       final prefs = await SharedPreferences.getInstance();
       await prefs.remove(_lastScannedAtKey);
