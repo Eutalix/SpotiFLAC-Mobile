@@ -48,6 +48,7 @@ AppSettings _$AppSettingsFromJson(Map<String, dynamic> json) => AppSettings(
   localLibraryPath: json['localLibraryPath'] as String? ?? '',
   localLibraryShowDuplicates:
       json['localLibraryShowDuplicates'] as bool? ?? true,
+  hasCompletedTutorial: json['hasCompletedTutorial'] as bool? ?? false,
 );
 
 Map<String, dynamic> _$AppSettingsToJson(AppSettings instance) =>
@@ -89,4 +90,5 @@ Map<String, dynamic> _$AppSettingsToJson(AppSettings instance) =>
       'localLibraryEnabled': instance.localLibraryEnabled,
       'localLibraryPath': instance.localLibraryPath,
       'localLibraryShowDuplicates': instance.localLibraryShowDuplicates,
+      'hasCompletedTutorial': instance.hasCompletedTutorial,
     };

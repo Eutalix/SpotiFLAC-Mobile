@@ -4419,6 +4419,306 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'{count, plural, =1{1 hour ago} other{{count} hours ago}}'**
   String timeHoursAgo(int count);
+
+  /// Dialog title when switching storage mode
+  ///
+  /// In en, this message translates to:
+  /// **'Switch Storage Mode'**
+  String get storageSwitchTitle;
+
+  /// Dialog title when switching to SAF
+  ///
+  /// In en, this message translates to:
+  /// **'Switch to SAF Storage?'**
+  String get storageSwitchToSafTitle;
+
+  /// Dialog title when switching to app storage
+  ///
+  /// In en, this message translates to:
+  /// **'Switch to App Storage?'**
+  String get storageSwitchToAppTitle;
+
+  /// Explanation when switching to SAF
+  ///
+  /// In en, this message translates to:
+  /// **'Your existing downloads will remain in the current location and stay accessible.\n\nNew downloads will be saved to your selected SAF folder.'**
+  String get storageSwitchToSafMessage;
+
+  /// Explanation when switching to app storage
+  ///
+  /// In en, this message translates to:
+  /// **'Your existing downloads will remain in the current SAF location and stay accessible.\n\nNew downloads will be saved to Music/SpotiFLAC folder.'**
+  String get storageSwitchToAppMessage;
+
+  /// Section header for existing downloads info
+  ///
+  /// In en, this message translates to:
+  /// **'Existing Downloads'**
+  String get storageSwitchExistingDownloads;
+
+  /// Info about existing downloads count
+  ///
+  /// In en, this message translates to:
+  /// **'{count} tracks in {mode} storage'**
+  String storageSwitchExistingDownloadsInfo(int count, String mode);
+
+  /// Section header for new downloads info
+  ///
+  /// In en, this message translates to:
+  /// **'New Downloads'**
+  String get storageSwitchNewDownloads;
+
+  /// Shows where new downloads will go
+  ///
+  /// In en, this message translates to:
+  /// **'Will be saved to: {location}'**
+  String storageSwitchNewDownloadsLocation(String location);
+
+  /// Button to proceed with storage switch
+  ///
+  /// In en, this message translates to:
+  /// **'Continue'**
+  String get storageSwitchContinue;
+
+  /// Button to select SAF folder
+  ///
+  /// In en, this message translates to:
+  /// **'Select SAF Folder'**
+  String get storageSwitchSelectFolder;
+
+  /// Label for app storage mode
+  ///
+  /// In en, this message translates to:
+  /// **'App Storage'**
+  String get storageAppStorage;
+
+  /// Label for SAF storage mode
+  ///
+  /// In en, this message translates to:
+  /// **'SAF Storage'**
+  String get storageSafStorage;
+
+  /// Badge showing storage mode for a track
+  ///
+  /// In en, this message translates to:
+  /// **'Storage: {mode}'**
+  String storageModeBadge(String mode);
+
+  /// Section title for storage stats
+  ///
+  /// In en, this message translates to:
+  /// **'Storage Statistics'**
+  String get storageStatsTitle;
+
+  /// Count of tracks in app storage
+  ///
+  /// In en, this message translates to:
+  /// **'{count} tracks in App Storage'**
+  String storageStatsAppCount(int count);
+
+  /// Count of tracks in SAF storage
+  ///
+  /// In en, this message translates to:
+  /// **'{count} tracks in SAF Storage'**
+  String storageStatsSafCount(int count);
+
+  /// Info when user has files in both storage modes
+  ///
+  /// In en, this message translates to:
+  /// **'Your files are stored in multiple locations'**
+  String get storageModeInfo;
+
+  /// Tutorial welcome page title
+  ///
+  /// In en, this message translates to:
+  /// **'Welcome to SpotiFLAC!'**
+  String get tutorialWelcomeTitle;
+
+  /// Tutorial welcome page description
+  ///
+  /// In en, this message translates to:
+  /// **'Let\'s learn how to download your favorite music in lossless quality. This quick tutorial will show you the basics.'**
+  String get tutorialWelcomeDesc;
+
+  /// Tutorial welcome tip 1
+  ///
+  /// In en, this message translates to:
+  /// **'Download music from Spotify, Deezer, or paste any supported URL'**
+  String get tutorialWelcomeTip1;
+
+  /// Tutorial welcome tip 2
+  ///
+  /// In en, this message translates to:
+  /// **'Get FLAC quality audio from Tidal, Qobuz, or Amazon Music'**
+  String get tutorialWelcomeTip2;
+
+  /// Tutorial welcome tip 3
+  ///
+  /// In en, this message translates to:
+  /// **'Automatic metadata, cover art, and lyrics embedding'**
+  String get tutorialWelcomeTip3;
+
+  /// Tutorial search page title
+  ///
+  /// In en, this message translates to:
+  /// **'Finding Music'**
+  String get tutorialSearchTitle;
+
+  /// Tutorial search page description
+  ///
+  /// In en, this message translates to:
+  /// **'There are two easy ways to find music you want to download.'**
+  String get tutorialSearchDesc;
+
+  /// Tutorial search tip 1
+  ///
+  /// In en, this message translates to:
+  /// **'Paste a Spotify or Deezer URL directly in the search box'**
+  String get tutorialSearchTip1;
+
+  /// Tutorial search tip 2
+  ///
+  /// In en, this message translates to:
+  /// **'Or type the song name, artist, or album to search'**
+  String get tutorialSearchTip2;
+
+  /// Tutorial search tip 3
+  ///
+  /// In en, this message translates to:
+  /// **'Supports tracks, albums, playlists, and artist pages'**
+  String get tutorialSearchTip3;
+
+  /// Tutorial download page title
+  ///
+  /// In en, this message translates to:
+  /// **'Downloading Music'**
+  String get tutorialDownloadTitle;
+
+  /// Tutorial download page description
+  ///
+  /// In en, this message translates to:
+  /// **'Downloading music is simple and fast. Here\'s how it works.'**
+  String get tutorialDownloadDesc;
+
+  /// Tutorial download tip 1
+  ///
+  /// In en, this message translates to:
+  /// **'Tap the download button next to any track to start downloading'**
+  String get tutorialDownloadTip1;
+
+  /// Tutorial download tip 2
+  ///
+  /// In en, this message translates to:
+  /// **'Choose your preferred quality (FLAC, Hi-Res, or MP3)'**
+  String get tutorialDownloadTip2;
+
+  /// Tutorial download tip 3
+  ///
+  /// In en, this message translates to:
+  /// **'Download entire albums or playlists with one tap'**
+  String get tutorialDownloadTip3;
+
+  /// Tutorial library page title
+  ///
+  /// In en, this message translates to:
+  /// **'Your Library'**
+  String get tutorialLibraryTitle;
+
+  /// Tutorial library page description
+  ///
+  /// In en, this message translates to:
+  /// **'All your downloaded music is organized in the Library tab.'**
+  String get tutorialLibraryDesc;
+
+  /// Tutorial library tip 1
+  ///
+  /// In en, this message translates to:
+  /// **'View download progress and queue in the Library tab'**
+  String get tutorialLibraryTip1;
+
+  /// Tutorial library tip 2
+  ///
+  /// In en, this message translates to:
+  /// **'Tap any track to play it with your music player'**
+  String get tutorialLibraryTip2;
+
+  /// Tutorial library tip 3
+  ///
+  /// In en, this message translates to:
+  /// **'Switch between list and grid view for better browsing'**
+  String get tutorialLibraryTip3;
+
+  /// Tutorial extensions page title
+  ///
+  /// In en, this message translates to:
+  /// **'Extensions'**
+  String get tutorialExtensionsTitle;
+
+  /// Tutorial extensions page description
+  ///
+  /// In en, this message translates to:
+  /// **'Extend the app\'s capabilities with community extensions.'**
+  String get tutorialExtensionsDesc;
+
+  /// Tutorial extensions tip 1
+  ///
+  /// In en, this message translates to:
+  /// **'Browse the Store tab to discover useful extensions'**
+  String get tutorialExtensionsTip1;
+
+  /// Tutorial extensions tip 2
+  ///
+  /// In en, this message translates to:
+  /// **'Add new download providers or search sources'**
+  String get tutorialExtensionsTip2;
+
+  /// Tutorial extensions tip 3
+  ///
+  /// In en, this message translates to:
+  /// **'Get lyrics, enhanced metadata, and more features'**
+  String get tutorialExtensionsTip3;
+
+  /// Tutorial settings page title
+  ///
+  /// In en, this message translates to:
+  /// **'Customize Your Experience'**
+  String get tutorialSettingsTitle;
+
+  /// Tutorial settings page description
+  ///
+  /// In en, this message translates to:
+  /// **'Personalize the app in Settings to match your preferences.'**
+  String get tutorialSettingsDesc;
+
+  /// Tutorial settings tip 1
+  ///
+  /// In en, this message translates to:
+  /// **'Change download location and folder organization'**
+  String get tutorialSettingsTip1;
+
+  /// Tutorial settings tip 2
+  ///
+  /// In en, this message translates to:
+  /// **'Set default audio quality and format preferences'**
+  String get tutorialSettingsTip2;
+
+  /// Tutorial settings tip 3
+  ///
+  /// In en, this message translates to:
+  /// **'Customize app theme and appearance'**
+  String get tutorialSettingsTip3;
+
+  /// Tutorial completion message
+  ///
+  /// In en, this message translates to:
+  /// **'You\'re all set! Start downloading your favorite music now.'**
+  String get tutorialReadyMessage;
+
+  /// Example label in tutorial
+  ///
+  /// In en, this message translates to:
+  /// **'EXAMPLE'**
+  String get tutorialExample;
 }
 
 class _AppLocalizationsDelegate

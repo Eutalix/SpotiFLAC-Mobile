@@ -43,6 +43,9 @@ class AppSettings {
   final bool localLibraryEnabled; // Enable local library scanning
   final String localLibraryPath; // Path to scan for audio files
   final bool localLibraryShowDuplicates; // Show indicator when searching for existing tracks
+  
+  // Tutorial/Onboarding
+  final bool hasCompletedTutorial; // Track if user has completed the app tutorial
 
   const AppSettings({
     this.defaultService = 'tidal',
@@ -83,6 +86,8 @@ class AppSettings {
     this.localLibraryEnabled = false,
     this.localLibraryPath = '',
     this.localLibraryShowDuplicates = true,
+    // Tutorial default
+    this.hasCompletedTutorial = false,
   });
 
   AppSettings copyWith({
@@ -125,6 +130,8 @@ class AppSettings {
     bool? localLibraryEnabled,
     String? localLibraryPath,
     bool? localLibraryShowDuplicates,
+    // Tutorial
+    bool? hasCompletedTutorial,
   }) {
     return AppSettings(
       defaultService: defaultService ?? this.defaultService,
@@ -165,6 +172,8 @@ class AppSettings {
       localLibraryEnabled: localLibraryEnabled ?? this.localLibraryEnabled,
       localLibraryPath: localLibraryPath ?? this.localLibraryPath,
       localLibraryShowDuplicates: localLibraryShowDuplicates ?? this.localLibraryShowDuplicates,
+      // Tutorial
+      hasCompletedTutorial: hasCompletedTutorial ?? this.hasCompletedTutorial,
     );
   }
 

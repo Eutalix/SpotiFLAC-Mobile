@@ -1,7 +1,10 @@
 import 'dart:async';
+import 'dart:io';
+import 'package:device_info_plus/device_info_plus.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:spotiflac_android/l10n/l10n.dart';
 import 'package:spotiflac_android/providers/download_queue_provider.dart';
 import 'package:spotiflac_android/providers/extension_provider.dart';
@@ -12,6 +15,7 @@ import 'package:spotiflac_android/screens/home_tab.dart';
 import 'package:spotiflac_android/screens/store_tab.dart';
 import 'package:spotiflac_android/screens/queue_tab.dart';
 import 'package:spotiflac_android/screens/settings/settings_tab.dart';
+import 'package:spotiflac_android/services/platform_bridge.dart';
 import 'package:spotiflac_android/services/share_intent_service.dart';
 import 'package:spotiflac_android/services/update_checker.dart';
 import 'package:spotiflac_android/widgets/update_dialog.dart';
@@ -40,6 +44,7 @@ class _MainShellState extends ConsumerState<MainShell> {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _checkForUpdates();
       _setupShareListener();
+      _checkSafMigration();
     });
   }
 
@@ -113,6 +118,88 @@ class _MainShellState extends ConsumerState<MainShell> {
         },
       );
     }
+  }
+
+  static const _safMigrationShownKey = 'saf_migration_prompt_shown';
+
+  Future<void> _checkSafMigration() async {
+    if (!Platform.isAndroid) return;
+
+    final settings = ref.read(settingsProvider);
+    // Only show if user is still on legacy storage mode with a download dir set
+    if (settings.storageMode == 'saf') return;
+    if (settings.downloadDirectory.isEmpty) return;
+
+    // Check Android version
+    final deviceInfo = DeviceInfoPlugin();
+    final androidInfo = await deviceInfo.androidInfo;
+    if (androidInfo.version.sdkInt < 29) return;
+
+    // Only show once
+    final prefs = await SharedPreferences.getInstance();
+    if (prefs.getBool(_safMigrationShownKey) == true) return;
+    await prefs.setBool(_safMigrationShownKey, true);
+
+    if (!mounted) return;
+
+    final colorScheme = Theme.of(context).colorScheme;
+
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (ctx) => AlertDialog(
+        icon: Icon(
+          Icons.folder_special_outlined,
+          size: 32,
+          color: colorScheme.primary,
+        ),
+        title: const Text('Storage Update Required'),
+        content: const Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              'SpotiFLAC now uses Android Storage Access Framework (SAF) for downloads. '
+              'This fixes "permission denied" errors on Android 10+.',
+            ),
+            SizedBox(height: 12),
+            Text(
+              'Please select your download folder again to switch to the new storage system.',
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('Later'),
+          ),
+          FilledButton(
+            onPressed: () async {
+              Navigator.pop(ctx);
+              final result = await PlatformBridge.pickSafTree();
+              if (result != null) {
+                final treeUri = result['tree_uri'] as String? ?? '';
+                final displayName = result['display_name'] as String? ?? '';
+                if (treeUri.isNotEmpty) {
+                  ref.read(settingsProvider.notifier).setDownloadTreeUri(
+                    treeUri,
+                    displayName: displayName.isNotEmpty ? displayName : treeUri,
+                  );
+                  if (mounted) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(
+                        content: Text('Download folder updated to SAF mode'),
+                      ),
+                    );
+                  }
+                }
+              }
+            },
+            child: const Text('Select Folder'),
+          ),
+        ],
+      ),
+    );
   }
 
   @override

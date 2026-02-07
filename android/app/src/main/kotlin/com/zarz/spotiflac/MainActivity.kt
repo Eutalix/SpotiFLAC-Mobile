@@ -1039,6 +1039,26 @@ class MainActivity: FlutterFragmentActivity() {
                                 result.error("open_failed", e.message, null)
                             }
                         }
+                        "shareContentUri" -> {
+                            val uriStr = call.argument<String>("uri") ?: ""
+                            val title = call.argument<String>("title") ?: ""
+                            try {
+                                val uri = Uri.parse(uriStr)
+                                val type = contentResolver.getType(uri) ?: "audio/*"
+                                val shareIntent = Intent(Intent.ACTION_SEND).apply {
+                                    putExtra(Intent.EXTRA_STREAM, uri)
+                                    setType(type)
+                                    addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                                    if (title.isNotBlank()) {
+                                        putExtra(Intent.EXTRA_SUBJECT, title)
+                                    }
+                                }
+                                startActivity(Intent.createChooser(shareIntent, title.ifBlank { "Share" }))
+                                result.success(true)
+                            } catch (e: Exception) {
+                                result.error("share_failed", e.message, null)
+                            }
+                        }
                         "fetchLyrics" -> {
                             val spotifyId = call.argument<String>("spotify_id") ?: ""
                             val trackName = call.argument<String>("track_name") ?: ""

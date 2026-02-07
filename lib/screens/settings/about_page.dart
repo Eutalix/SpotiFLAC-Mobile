@@ -192,23 +192,6 @@ _AboutSettingsItem(
           ),
 
           SliverToBoxAdapter(
-            child: SettingsSectionHeader(title: context.l10n.aboutSupport),
-          ),
-          SliverToBoxAdapter(
-            child: SettingsGroup(
-              children: [
-                _AboutSettingsItem(
-                  icon: Icons.coffee_outlined,
-                  title: context.l10n.aboutBuyMeCoffee,
-                  subtitle: context.l10n.aboutBuyMeCoffeeSubtitle,
-                  onTap: () => _launchUrl(AppInfo.kofiUrl),
-                  showDivider: false,
-                ),
-              ],
-            ),
-          ),
-
-          SliverToBoxAdapter(
             child: SettingsSectionHeader(title: context.l10n.aboutApp),
           ),
           SliverToBoxAdapter(

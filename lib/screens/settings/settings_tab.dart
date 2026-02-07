@@ -8,6 +8,7 @@ import 'package:spotiflac_android/screens/settings/extensions_page.dart';
 import 'package:spotiflac_android/screens/settings/library_settings_page.dart';
 import 'package:spotiflac_android/screens/settings/options_settings_page.dart';
 import 'package:spotiflac_android/screens/settings/about_page.dart';
+import 'package:spotiflac_android/screens/settings/donate_page.dart';
 import 'package:spotiflac_android/screens/settings/log_screen.dart';
 import 'package:spotiflac_android/widgets/settings_group.dart';
 
@@ -91,6 +92,12 @@ class SettingsTab extends ConsumerWidget {
                     title: l10n.settingsExtensions,
                     subtitle: l10n.settingsExtensionsSubtitle,
                     onTap: () => _navigateTo(context, const ExtensionsPage()),
+                  ),
+                  SettingsItem(
+                    icon: Icons.favorite_outline,
+                    title: 'Donate',
+                    subtitle: 'Support SpotiFLAC-Mobile development',
+                    onTap: () => _navigateTo(context, const DonatePage()),
                     showDivider: false,
                   ),
                 ],

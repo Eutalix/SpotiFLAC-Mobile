@@ -2442,4 +2442,190 @@ class AppLocalizationsJa extends AppLocalizations {
     );
     return '$_temp0';
   }
+
+  @override
+  String get storageSwitchTitle => 'Switch Storage Mode';
+
+  @override
+  String get storageSwitchToSafTitle => 'Switch to SAF Storage?';
+
+  @override
+  String get storageSwitchToAppTitle => 'Switch to App Storage?';
+
+  @override
+  String get storageSwitchToSafMessage =>
+      'Your existing downloads will remain in the current location and stay accessible.\n\nNew downloads will be saved to your selected SAF folder.';
+
+  @override
+  String get storageSwitchToAppMessage =>
+      'Your existing downloads will remain in the current SAF location and stay accessible.\n\nNew downloads will be saved to Music/SpotiFLAC folder.';
+
+  @override
+  String get storageSwitchExistingDownloads => 'Existing Downloads';
+
+  @override
+  String storageSwitchExistingDownloadsInfo(int count, String mode) {
+    return '$count tracks in $mode storage';
+  }
+
+  @override
+  String get storageSwitchNewDownloads => 'New Downloads';
+
+  @override
+  String storageSwitchNewDownloadsLocation(String location) {
+    return 'Will be saved to: $location';
+  }
+
+  @override
+  String get storageSwitchContinue => 'Continue';
+
+  @override
+  String get storageSwitchSelectFolder => 'Select SAF Folder';
+
+  @override
+  String get storageAppStorage => 'App Storage';
+
+  @override
+  String get storageSafStorage => 'SAF Storage';
+
+  @override
+  String storageModeBadge(String mode) {
+    return 'Storage: $mode';
+  }
+
+  @override
+  String get storageStatsTitle => 'Storage Statistics';
+
+  @override
+  String storageStatsAppCount(int count) {
+    return '$count tracks in App Storage';
+  }
+
+  @override
+  String storageStatsSafCount(int count) {
+    return '$count tracks in SAF Storage';
+  }
+
+  @override
+  String get storageModeInfo => 'Your files are stored in multiple locations';
+
+  @override
+  String get tutorialWelcomeTitle => 'Welcome to SpotiFLAC!';
+
+  @override
+  String get tutorialWelcomeDesc =>
+      'Let\'s learn how to download your favorite music in lossless quality. This quick tutorial will show you the basics.';
+
+  @override
+  String get tutorialWelcomeTip1 =>
+      'Download music from Spotify, Deezer, or paste any supported URL';
+
+  @override
+  String get tutorialWelcomeTip2 =>
+      'Get FLAC quality audio from Tidal, Qobuz, or Amazon Music';
+
+  @override
+  String get tutorialWelcomeTip3 =>
+      'Automatic metadata, cover art, and lyrics embedding';
+
+  @override
+  String get tutorialSearchTitle => 'Finding Music';
+
+  @override
+  String get tutorialSearchDesc =>
+      'There are two easy ways to find music you want to download.';
+
+  @override
+  String get tutorialSearchTip1 =>
+      'Paste a Spotify or Deezer URL directly in the search box';
+
+  @override
+  String get tutorialSearchTip2 =>
+      'Or type the song name, artist, or album to search';
+
+  @override
+  String get tutorialSearchTip3 =>
+      'Supports tracks, albums, playlists, and artist pages';
+
+  @override
+  String get tutorialDownloadTitle => 'Downloading Music';
+
+  @override
+  String get tutorialDownloadDesc =>
+      'Downloading music is simple and fast. Here\'s how it works.';
+
+  @override
+  String get tutorialDownloadTip1 =>
+      'Tap the download button next to any track to start downloading';
+
+  @override
+  String get tutorialDownloadTip2 =>
+      'Choose your preferred quality (FLAC, Hi-Res, or MP3)';
+
+  @override
+  String get tutorialDownloadTip3 =>
+      'Download entire albums or playlists with one tap';
+
+  @override
+  String get tutorialLibraryTitle => 'Your Library';
+
+  @override
+  String get tutorialLibraryDesc =>
+      'All your downloaded music is organized in the Library tab.';
+
+  @override
+  String get tutorialLibraryTip1 =>
+      'View download progress and queue in the Library tab';
+
+  @override
+  String get tutorialLibraryTip2 =>
+      'Tap any track to play it with your music player';
+
+  @override
+  String get tutorialLibraryTip3 =>
+      'Switch between list and grid view for better browsing';
+
+  @override
+  String get tutorialExtensionsTitle => 'Extensions';
+
+  @override
+  String get tutorialExtensionsDesc =>
+      'Extend the app\'s capabilities with community extensions.';
+
+  @override
+  String get tutorialExtensionsTip1 =>
+      'Browse the Store tab to discover useful extensions';
+
+  @override
+  String get tutorialExtensionsTip2 =>
+      'Add new download providers or search sources';
+
+  @override
+  String get tutorialExtensionsTip3 =>
+      'Get lyrics, enhanced metadata, and more features';
+
+  @override
+  String get tutorialSettingsTitle => 'Customize Your Experience';
+
+  @override
+  String get tutorialSettingsDesc =>
+      'Personalize the app in Settings to match your preferences.';
+
+  @override
+  String get tutorialSettingsTip1 =>
+      'Change download location and folder organization';
+
+  @override
+  String get tutorialSettingsTip2 =>
+      'Set default audio quality and format preferences';
+
+  @override
+  String get tutorialSettingsTip3 => 'Customize app theme and appearance';
+
+  @override
+  String get tutorialReadyMessage =>
+      'You\'re all set! Start downloading your favorite music now.';
+
+  @override
+  String get tutorialExample => 'EXAMPLE';
 }

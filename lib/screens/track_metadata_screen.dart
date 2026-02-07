@@ -1273,23 +1273,26 @@ class _TrackMetadataScreenState extends ConsumerState<TrackMetadataScreen> {
       return;
     }
 
+    final shareTitle = '$trackName - $artistName';
+
+    // For SAF content URIs, use native share intent directly (zero-copy)
     if (isContentUri(sharePath)) {
-      final tempPath = await PlatformBridge.copyContentUriToTemp(sharePath);
-      if (tempPath == null || tempPath.isEmpty) {
+      try {
+        await PlatformBridge.shareContentUri(sharePath, title: shareTitle);
+      } catch (_) {
         if (context.mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text(context.l10n.snackbarCannotOpenFile('Failed to prepare file for sharing'))),
+            SnackBar(content: Text(context.l10n.snackbarCannotOpenFile('Failed to share file'))),
           );
         }
-        return;
       }
-      sharePath = tempPath;
+      return;
     }
     
     await SharePlus.instance.share(
       ShareParams(
         files: [XFile(sharePath)],
-        text: '$trackName - $artistName',
+        text: shareTitle,
       ),
     );
   }

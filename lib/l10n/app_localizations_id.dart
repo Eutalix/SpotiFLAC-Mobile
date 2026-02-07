@@ -2469,4 +2469,190 @@ class AppLocalizationsId extends AppLocalizations {
     );
     return '$_temp0';
   }
+
+  @override
+  String get storageSwitchTitle => 'Switch Storage Mode';
+
+  @override
+  String get storageSwitchToSafTitle => 'Switch to SAF Storage?';
+
+  @override
+  String get storageSwitchToAppTitle => 'Switch to App Storage?';
+
+  @override
+  String get storageSwitchToSafMessage =>
+      'Your existing downloads will remain in the current location and stay accessible.\n\nNew downloads will be saved to your selected SAF folder.';
+
+  @override
+  String get storageSwitchToAppMessage =>
+      'Your existing downloads will remain in the current SAF location and stay accessible.\n\nNew downloads will be saved to Music/SpotiFLAC folder.';
+
+  @override
+  String get storageSwitchExistingDownloads => 'Existing Downloads';
+
+  @override
+  String storageSwitchExistingDownloadsInfo(int count, String mode) {
+    return '$count tracks in $mode storage';
+  }
+
+  @override
+  String get storageSwitchNewDownloads => 'New Downloads';
+
+  @override
+  String storageSwitchNewDownloadsLocation(String location) {
+    return 'Will be saved to: $location';
+  }
+
+  @override
+  String get storageSwitchContinue => 'Continue';
+
+  @override
+  String get storageSwitchSelectFolder => 'Select SAF Folder';
+
+  @override
+  String get storageAppStorage => 'App Storage';
+
+  @override
+  String get storageSafStorage => 'SAF Storage';
+
+  @override
+  String storageModeBadge(String mode) {
+    return 'Storage: $mode';
+  }
+
+  @override
+  String get storageStatsTitle => 'Storage Statistics';
+
+  @override
+  String storageStatsAppCount(int count) {
+    return '$count tracks in App Storage';
+  }
+
+  @override
+  String storageStatsSafCount(int count) {
+    return '$count tracks in SAF Storage';
+  }
+
+  @override
+  String get storageModeInfo => 'Your files are stored in multiple locations';
+
+  @override
+  String get tutorialWelcomeTitle => 'Selamat Datang di SpotiFLAC!';
+
+  @override
+  String get tutorialWelcomeDesc =>
+      'Mari pelajari cara mengunduh musik favorit Anda dalam kualitas lossless. Tutorial singkat ini akan menunjukkan dasar-dasarnya.';
+
+  @override
+  String get tutorialWelcomeTip1 =>
+      'Unduh musik dari Spotify, Deezer, atau tempel URL yang didukung';
+
+  @override
+  String get tutorialWelcomeTip2 =>
+      'Dapatkan audio kualitas FLAC dari Tidal, Qobuz, atau Amazon Music';
+
+  @override
+  String get tutorialWelcomeTip3 =>
+      'Metadata, cover art, dan lirik otomatis tertanam';
+
+  @override
+  String get tutorialSearchTitle => 'Mencari Musik';
+
+  @override
+  String get tutorialSearchDesc =>
+      'Ada dua cara mudah untuk menemukan musik yang ingin Anda unduh.';
+
+  @override
+  String get tutorialSearchTip1 =>
+      'Tempel URL Spotify atau Deezer langsung di kotak pencarian';
+
+  @override
+  String get tutorialSearchTip2 =>
+      'Atau ketik nama lagu, artis, atau album untuk mencari';
+
+  @override
+  String get tutorialSearchTip3 =>
+      'Mendukung lagu, album, playlist, dan halaman artis';
+
+  @override
+  String get tutorialDownloadTitle => 'Mengunduh Musik';
+
+  @override
+  String get tutorialDownloadDesc =>
+      'Mengunduh musik itu mudah dan cepat. Begini caranya.';
+
+  @override
+  String get tutorialDownloadTip1 =>
+      'Ketuk tombol unduh di samping lagu mana pun untuk mulai mengunduh';
+
+  @override
+  String get tutorialDownloadTip2 =>
+      'Pilih kualitas yang Anda inginkan (FLAC, Hi-Res, atau MP3)';
+
+  @override
+  String get tutorialDownloadTip3 =>
+      'Unduh seluruh album atau playlist dengan satu ketukan';
+
+  @override
+  String get tutorialLibraryTitle => 'Perpustakaan Anda';
+
+  @override
+  String get tutorialLibraryDesc =>
+      'Semua musik yang Anda unduh terorganisir di tab Perpustakaan.';
+
+  @override
+  String get tutorialLibraryTip1 =>
+      'Lihat progres unduhan dan antrian di tab Perpustakaan';
+
+  @override
+  String get tutorialLibraryTip2 =>
+      'Ketuk lagu mana pun untuk memutarnya dengan pemutar musik';
+
+  @override
+  String get tutorialLibraryTip3 =>
+      'Beralih antara tampilan daftar dan grid untuk penjelajahan lebih baik';
+
+  @override
+  String get tutorialExtensionsTitle => 'Ekstensi';
+
+  @override
+  String get tutorialExtensionsDesc =>
+      'Tingkatkan kemampuan aplikasi dengan ekstensi komunitas.';
+
+  @override
+  String get tutorialExtensionsTip1 =>
+      'Jelajahi tab Toko untuk menemukan ekstensi berguna';
+
+  @override
+  String get tutorialExtensionsTip2 =>
+      'Tambahkan provider unduhan atau sumber pencarian baru';
+
+  @override
+  String get tutorialExtensionsTip3 =>
+      'Dapatkan lirik, metadata lebih baik, dan fitur lainnya';
+
+  @override
+  String get tutorialSettingsTitle => 'Sesuaikan Pengalaman Anda';
+
+  @override
+  String get tutorialSettingsDesc =>
+      'Personalisasi aplikasi di Pengaturan sesuai preferensi Anda.';
+
+  @override
+  String get tutorialSettingsTip1 =>
+      'Ubah lokasi unduhan dan organisasi folder';
+
+  @override
+  String get tutorialSettingsTip2 =>
+      'Atur kualitas audio dan preferensi format default';
+
+  @override
+  String get tutorialSettingsTip3 => 'Sesuaikan tema dan tampilan aplikasi';
+
+  @override
+  String get tutorialReadyMessage =>
+      'Anda siap! Mulai unduh musik favorit Anda sekarang.';
+
+  @override
+  String get tutorialExample => 'CONTOH';
 }

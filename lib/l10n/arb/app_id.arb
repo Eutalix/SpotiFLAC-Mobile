@@ -2864,5 +2864,140 @@
   "discographyFailedToFetch": "Failed to fetch some albums",
   "@discographyFailedToFetch": {
     "description": "Error - some albums failed to load"
+  },
+
+  "tutorialWelcomeTitle": "Selamat Datang di SpotiFLAC!",
+  "@tutorialWelcomeTitle": {
+    "description": "Tutorial welcome page title"
+  },
+  "tutorialWelcomeDesc": "Mari pelajari cara mengunduh musik favorit Anda dalam kualitas lossless. Tutorial singkat ini akan menunjukkan dasar-dasarnya.",
+  "@tutorialWelcomeDesc": {
+    "description": "Tutorial welcome page description"
+  },
+  "tutorialWelcomeTip1": "Unduh musik dari Spotify, Deezer, atau tempel URL yang didukung",
+  "@tutorialWelcomeTip1": {
+    "description": "Tutorial welcome tip 1"
+  },
+  "tutorialWelcomeTip2": "Dapatkan audio kualitas FLAC dari Tidal, Qobuz, atau Amazon Music",
+  "@tutorialWelcomeTip2": {
+    "description": "Tutorial welcome tip 2"
+  },
+  "tutorialWelcomeTip3": "Metadata, cover art, dan lirik otomatis tertanam",
+  "@tutorialWelcomeTip3": {
+    "description": "Tutorial welcome tip 3"
+  },
+
+  "tutorialSearchTitle": "Mencari Musik",
+  "@tutorialSearchTitle": {
+    "description": "Tutorial search page title"
+  },
+  "tutorialSearchDesc": "Ada dua cara mudah untuk menemukan musik yang ingin Anda unduh.",
+  "@tutorialSearchDesc": {
+    "description": "Tutorial search page description"
+  },
+  "tutorialSearchTip1": "Tempel URL Spotify atau Deezer langsung di kotak pencarian",
+  "@tutorialSearchTip1": {
+    "description": "Tutorial search tip 1"
+  },
+  "tutorialSearchTip2": "Atau ketik nama lagu, artis, atau album untuk mencari",
+  "@tutorialSearchTip2": {
+    "description": "Tutorial search tip 2"
+  },
+  "tutorialSearchTip3": "Mendukung lagu, album, playlist, dan halaman artis",
+  "@tutorialSearchTip3": {
+    "description": "Tutorial search tip 3"
+  },
+
+  "tutorialDownloadTitle": "Mengunduh Musik",
+  "@tutorialDownloadTitle": {
+    "description": "Tutorial download page title"
+  },
+  "tutorialDownloadDesc": "Mengunduh musik itu mudah dan cepat. Begini caranya.",
+  "@tutorialDownloadDesc": {
+    "description": "Tutorial download page description"
+  },
+  "tutorialDownloadTip1": "Ketuk tombol unduh di samping lagu mana pun untuk mulai mengunduh",
+  "@tutorialDownloadTip1": {
+    "description": "Tutorial download tip 1"
+  },
+  "tutorialDownloadTip2": "Pilih kualitas yang Anda inginkan (FLAC, Hi-Res, atau MP3)",
+  "@tutorialDownloadTip2": {
+    "description": "Tutorial download tip 2"
+  },
+  "tutorialDownloadTip3": "Unduh seluruh album atau playlist dengan satu ketukan",
+  "@tutorialDownloadTip3": {
+    "description": "Tutorial download tip 3"
+  },
+
+  "tutorialLibraryTitle": "Perpustakaan Anda",
+  "@tutorialLibraryTitle": {
+    "description": "Tutorial library page title"
+  },
+  "tutorialLibraryDesc": "Semua musik yang Anda unduh terorganisir di tab Perpustakaan.",
+  "@tutorialLibraryDesc": {
+    "description": "Tutorial library page description"
+  },
+  "tutorialLibraryTip1": "Lihat progres unduhan dan antrian di tab Perpustakaan",
+  "@tutorialLibraryTip1": {
+    "description": "Tutorial library tip 1"
+  },
+  "tutorialLibraryTip2": "Ketuk lagu mana pun untuk memutarnya dengan pemutar musik",
+  "@tutorialLibraryTip2": {
+    "description": "Tutorial library tip 2"
+  },
+  "tutorialLibraryTip3": "Beralih antara tampilan daftar dan grid untuk penjelajahan lebih baik",
+  "@tutorialLibraryTip3": {
+    "description": "Tutorial library tip 3"
+  },
+
+  "tutorialExtensionsTitle": "Ekstensi",
+  "@tutorialExtensionsTitle": {
+    "description": "Tutorial extensions page title"
+  },
+  "tutorialExtensionsDesc": "Tingkatkan kemampuan aplikasi dengan ekstensi komunitas.",
+  "@tutorialExtensionsDesc": {
+    "description": "Tutorial extensions page description"
+  },
+  "tutorialExtensionsTip1": "Jelajahi tab Toko untuk menemukan ekstensi berguna",
+  "@tutorialExtensionsTip1": {
+    "description": "Tutorial extensions tip 1"
+  },
+  "tutorialExtensionsTip2": "Tambahkan provider unduhan atau sumber pencarian baru",
+  "@tutorialExtensionsTip2": {
+    "description": "Tutorial extensions tip 2"
+  },
+  "tutorialExtensionsTip3": "Dapatkan lirik, metadata lebih baik, dan fitur lainnya",
+  "@tutorialExtensionsTip3": {
+    "description": "Tutorial extensions tip 3"
+  },
+
+  "tutorialSettingsTitle": "Sesuaikan Pengalaman Anda",
+  "@tutorialSettingsTitle": {
+    "description": "Tutorial settings page title"
+  },
+  "tutorialSettingsDesc": "Personalisasi aplikasi di Pengaturan sesuai preferensi Anda.",
+  "@tutorialSettingsDesc": {
+    "description": "Tutorial settings page description"
+  },
+  "tutorialSettingsTip1": "Ubah lokasi unduhan dan organisasi folder",
+  "@tutorialSettingsTip1": {
+    "description": "Tutorial settings tip 1"
+  },
+  "tutorialSettingsTip2": "Atur kualitas audio dan preferensi format default",
+  "@tutorialSettingsTip2": {
+    "description": "Tutorial settings tip 2"
+  },
+  "tutorialSettingsTip3": "Sesuaikan tema dan tampilan aplikasi",
+  "@tutorialSettingsTip3": {
+    "description": "Tutorial settings tip 3"
+  },
+
+  "tutorialReadyMessage": "Anda siap! Mulai unduh musik favorit Anda sekarang.",
+  "@tutorialReadyMessage": {
+    "description": "Tutorial completion message"
+  },
+  "tutorialExample": "CONTOH",
+  "@tutorialExample": {
+    "description": "Example label in tutorial"
   }
 }

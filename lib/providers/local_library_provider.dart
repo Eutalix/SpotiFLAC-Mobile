@@ -16,6 +16,7 @@ class LocalLibraryState {
   final double scanProgress;
   final String? scanCurrentFile;
   final int scanTotalFiles;
+  final int scannedFiles;
   final int scanErrorCount;
   final bool scanWasCancelled;
   final DateTime? lastScannedAt;
@@ -29,6 +30,7 @@ class LocalLibraryState {
     this.scanProgress = 0,
     this.scanCurrentFile,
     this.scanTotalFiles = 0,
+    this.scannedFiles = 0,
     this.scanErrorCount = 0,
     this.scanWasCancelled = false,
     this.lastScannedAt,
@@ -73,6 +75,7 @@ class LocalLibraryState {
     double? scanProgress,
     String? scanCurrentFile,
     int? scanTotalFiles,
+    int? scannedFiles,
     int? scanErrorCount,
     bool? scanWasCancelled,
     DateTime? lastScannedAt,
@@ -83,6 +86,7 @@ class LocalLibraryState {
       scanProgress: scanProgress ?? this.scanProgress,
       scanCurrentFile: scanCurrentFile ?? this.scanCurrentFile,
       scanTotalFiles: scanTotalFiles ?? this.scanTotalFiles,
+      scannedFiles: scannedFiles ?? this.scannedFiles,
       scanErrorCount: scanErrorCount ?? this.scanErrorCount,
       scanWasCancelled: scanWasCancelled ?? this.scanWasCancelled,
       lastScannedAt: lastScannedAt ?? this.lastScannedAt,
@@ -154,6 +158,7 @@ class LocalLibraryNotifier extends Notifier<LocalLibraryState> {
       scanProgress: 0,
       scanCurrentFile: null,
       scanTotalFiles: 0,
+      scannedFiles: 0,
       scanErrorCount: 0,
       scanWasCancelled: false,
     );
@@ -223,6 +228,7 @@ class LocalLibraryNotifier extends Notifier<LocalLibraryState> {
           scanProgress: (progress['progress_pct'] as num?)?.toDouble() ?? 0,
           scanCurrentFile: progress['current_file'] as String?,
           scanTotalFiles: progress['total_files'] as int? ?? 0,
+          scannedFiles: progress['scanned_files'] as int? ?? 0,
           scanErrorCount: progress['error_count'] as int? ?? 0,
         );
 

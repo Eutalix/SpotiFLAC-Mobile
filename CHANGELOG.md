@@ -1,12 +1,14 @@
 # Changelog
 
-## [3.5.0-beta.1] - 2026-02-06
+## [3.5.0] - 2026-02-07
 
 ### Highlights
+
 - **SAF Storage (Android 10+)**: Proper Storage Access Framework support for download destination (content URIs)
   - Select download folder via SAF tree picker
   - Downloads now write to SAF file descriptors (`/proc/self/fd/*`) instead of raw filesystem paths
   - Works around Android 10+ scoped storage permission errors
+- **Modern Onboarding Experience**: Completely redesigned Setup and Tutorial screens
 
 ### Added
 
@@ -19,6 +21,11 @@
 - Scan cancelled banner + retry action for library scans
 - Android DocumentFile dependency for SAF operations
 - Post-processing API v2 (SAF-aware, ready to replace v1)
+- Donate page in Settings with Ko-fi and Buy Me a Coffee links
+- Per-App Language support on Android 13+ (locale_config.xml)
+- Interactive tutorial with working search bar simulation and clickable download buttons
+- Visual feedback animations for page transitions, entrance effects, and feature lists
+- New dedicated welcome step in setup wizard with improved branding
 
 ### Changed
 
@@ -31,6 +38,13 @@
 - SAF tree picker flow in `MainActivity` migrated to Activity Result API (`registerForActivityResult`)
 - `MainActivity` host migrated to `FlutterFragmentActivity` for SAF picker compatibility
 - Legacy `startActivityForResult` / `onActivityResult` SAF picker path removed
+- Setup screen UI polish: smaller logo, thin outline borders on text fields
+- Removed support section from About page (moved to Donate page)
+- Qobuz squid.wtf region fallback for blocked regions
+- Setup screen converted to PageView flow with animated progress bar and modern card layouts
+- Tutorial screen aligned with Setup Screen design, updated typography and softened UI shapes
+- Larger, more accessible navigation buttons for onboarding flow
+- Reduced visual noise by removing unnecessary glow effects
 
 ### Fixed
 
@@ -42,6 +56,11 @@
 - Restored old-device renderer fallback while using `FlutterFragmentActivity` by injecting shell args from a custom `FlutterFragment` (`--enable-impeller=false` on problematic devices)
 - Preserved Flutter fragment creation behavior (cached engine, engine group, new engine) while adding Impeller fallback support
 - SAF tree picker result now consistently returns `tree_uri` payload with persisted URI permission handling
+- SAF share file now copies to temp before sharing (fixes share from SAF content URI)
+- Home feed not updating after installing extension with homeFeed capability (no longer requires app restart)
+- Library scan hero card showing 0 tracks during scan (now shows scanned file count in real-time)
+- Library folder picker no longer requires MANAGE_EXTERNAL_STORAGE on Android 10+ (uses SAF tree picker)
+- One-time SAF migration prompt for users updating from pre-SAF versions
 
 ---
 
@@ -150,7 +169,7 @@ Same as 3.3.1 but fixes crash issues caused by FFmpeg.
 - **Lossy Bitrate Options**: MP3 (320/256/192/128kbps), Opus (128/96/64kbps)
 - **Search Filters**: Filter results by type (Tracks, Artists, Albums, Playlists)
 - **Album/Playlist Search**: Deezer search now includes albums and playlists
-- **New Languages**: Turkish (Kaan, BedirhanGltkn), Japanese (Re*Index.(ot_inc))
+- **New Languages**: Turkish (Kaan, BedirhanGltkn), Japanese (Re\*Index.(ot_inc))
 - **Optional All Files Access**: Android 13+ no longer requires full storage access; enable in Settings if needed
 - **Improved VPN Compatibility**: Better HTTP/2 support for users behind VPN or restricted networks
 
@@ -270,7 +289,7 @@ Same as 3.3.1 but fixes crash issues caused by FFmpeg.
   - Added `genre`, `label`, `copyright` fields to `DownloadHistoryItem` model
   - Metadata is stored in download history and persists across app restarts
   - New localization strings: `trackGenre`, `trackLabel`, `trackCopyright`
-- `**utils.randomUserAgent()` for Extensions**: New utility function for extensions to get random browser User-Agent strings
+- `**utils.randomUserAgent()` for Extensions\*\*: New utility function for extensions to get random browser User-Agent strings
   - Returns modern Chrome User-Agent format: `Chrome/{120-145}.0.{6000-7499}.{100-299}` with `Windows NT 10.0`
   - Useful for extensions that need to rotate User-Agents to avoid detection
 
@@ -567,4 +586,4 @@ SpotiFLAC 3.0 introduces a powerful extension system that allows third-party int
 
 ---
 
-*For older versions, see [GitHub Releases*](https://github.com/zarzet/SpotiFLAC-Mobile/releases)
+_For older versions, see [GitHub Releases_](https://github.com/zarzet/SpotiFLAC-Mobile/releases)

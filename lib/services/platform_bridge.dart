@@ -319,6 +319,14 @@ class PlatformBridge {
     });
   }
 
+  static Future<bool> shareContentUri(String uri, {String title = ''}) async {
+    final result = await _channel.invokeMethod('shareContentUri', {
+      'uri': uri,
+      'title': title,
+    });
+    return result as bool? ?? false;
+  }
+
   static Future<Map<String, dynamic>> fetchLyrics(
     String spotifyId,
     String trackName,

@@ -778,8 +778,31 @@ func getQobuzAPITimeout() time.Duration {
 	return qobuzAPITimeoutMobile
 }
 
+// qobuzSquidCountries defines the region fallback order for squid.wtf API
+var qobuzSquidCountries = []string{"US", "FR"}
+
 // fetchQobuzURLWithRetry fetches download URL from a single Qobuz API with retry logic
+// For squid.wtf APIs, it tries US region first, then falls back to FR
 func fetchQobuzURLWithRetry(api string, trackID int64, quality string, timeout time.Duration) (string, error) {
+	isSquid := strings.Contains(api, "squid.wtf")
+
+	if isSquid {
+		for _, country := range qobuzSquidCountries {
+			GoLog("[Qobuz] Trying squid.wtf with country=%s\n", country)
+			result, err := fetchQobuzURLSingleAttempt(api, trackID, quality, timeout, country)
+			if err == nil {
+				return result, nil
+			}
+			GoLog("[Qobuz] squid.wtf country=%s failed: %v\n", country, err)
+		}
+		return "", fmt.Errorf("squid.wtf failed for all regions (US, FR)")
+	}
+
+	return fetchQobuzURLSingleAttempt(api, trackID, quality, timeout, "")
+}
+
+// fetchQobuzURLSingleAttempt fetches download URL with retry logic for a single API+country combination
+func fetchQobuzURLSingleAttempt(api string, trackID int64, quality string, timeout time.Duration, country string) (string, error) {
 	var lastErr error
 	retryDelay := qobuzRetryDelay
 
@@ -792,6 +815,9 @@ func fetchQobuzURLWithRetry(api string, trackID int64, quality string, timeout t
 
 		client := NewHTTPClientWithTimeout(timeout)
 		reqURL := fmt.Sprintf("%s%d&quality=%s", api, trackID, quality)
+		if country != "" {
+			reqURL += "&country=" + country
+		}
 
 		req, err := http.NewRequest("GET", reqURL, nil)
 		if err != nil {

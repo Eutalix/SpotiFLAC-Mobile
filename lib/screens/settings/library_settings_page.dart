@@ -7,6 +7,7 @@ import 'package:device_info_plus/device_info_plus.dart';
 import 'package:spotiflac_android/l10n/l10n.dart';
 import 'package:spotiflac_android/providers/settings_provider.dart';
 import 'package:spotiflac_android/providers/local_library_provider.dart';
+import 'package:spotiflac_android/services/platform_bridge.dart';
 import 'package:spotiflac_android/widgets/settings_group.dart';
 
 class LibrarySettingsPage extends ConsumerStatefulWidget {
@@ -21,6 +22,26 @@ class _LibrarySettingsPageState extends ConsumerState<LibrarySettingsPage> {
   int _androidSdkVersion = 0;
   bool _hasStoragePermission = false;
 
+  /// Convert SAF content URI to a readable display path
+  String _getDisplayPath(String path) {
+    if (!path.startsWith('content://')) return path;
+    // Extract the path portion from SAF tree URI
+    // e.g. content://com.android.externalstorage.documents/tree/primary%3AMusic
+    // -> /storage/emulated/0/Music
+    try {
+      final uri = Uri.parse(path);
+      final treePath = uri.pathSegments.last; // e.g. "primary:Music" or "primary%3AMusic"
+      final decoded = Uri.decodeComponent(treePath);
+      if (decoded.startsWith('primary:')) {
+        return '/storage/emulated/0/${decoded.substring('primary:'.length)}';
+      }
+      // For SD card or other volumes, just show the decoded path
+      return decoded;
+    } catch (_) {
+      return path;
+    }
+  }
+
   @override
   void initState() {
     super.initState();
@@ -33,19 +54,19 @@ class _LibrarySettingsPageState extends ConsumerState<LibrarySettingsPage> {
       final androidInfo = await deviceInfo.androidInfo;
       final sdkVersion = androidInfo.version.sdkInt;
 
-      // Check appropriate storage permission based on Android version
-      bool hasPermission;
-      if (sdkVersion >= 30) {
-        hasPermission = await Permission.manageExternalStorage.isGranted;
-      } else {
-        hasPermission = await Permission.storage.isGranted;
-      }
-
       if (mounted) {
         setState(() {
           _androidSdkVersion = sdkVersion;
-          _hasStoragePermission = hasPermission;
+          // SAF doesn't need storage permission on Android 10+
+          _hasStoragePermission = sdkVersion >= 29 ? true : false;
         });
+        // For older Android, check legacy storage permission
+        if (sdkVersion < 29) {
+          final hasPermission = await Permission.storage.isGranted;
+          if (mounted) {
+            setState(() => _hasStoragePermission = hasPermission);
+          }
+        }
       }
     } else if (Platform.isIOS) {
       // iOS doesn't need explicit storage permission for app documents
@@ -55,13 +76,10 @@ class _LibrarySettingsPageState extends ConsumerState<LibrarySettingsPage> {
 
   Future<bool> _requestStoragePermission() async {
     if (Platform.isIOS) return true;
+    // SAF on Android 10+ doesn't need MANAGE_EXTERNAL_STORAGE
+    if (_androidSdkVersion >= 29) return true;
 
-    PermissionStatus status;
-    if (_androidSdkVersion >= 30) {
-      status = await Permission.manageExternalStorage.request();
-    } else {
-      status = await Permission.storage.request();
-    }
+    final status = await Permission.storage.request();
 
     if (status.isGranted) {
       setState(() => _hasStoragePermission = true);
@@ -94,15 +112,26 @@ class _LibrarySettingsPageState extends ConsumerState<LibrarySettingsPage> {
   }
 
   Future<void> _pickLibraryFolder() async {
-    // Request permission first
-    if (!_hasStoragePermission) {
-      final granted = await _requestStoragePermission();
-      if (!granted) return;
-    }
-
-    final result = await FilePicker.platform.getDirectoryPath();
-    if (result != null) {
-      ref.read(settingsProvider.notifier).setLocalLibraryPath(result);
+    if (Platform.isAndroid && _androidSdkVersion >= 29) {
+      // Use SAF tree picker - no MANAGE_EXTERNAL_STORAGE needed
+      final result = await PlatformBridge.pickSafTree();
+      if (result != null) {
+        final treeUri = result['tree_uri'] as String? ?? '';
+        if (treeUri.isNotEmpty) {
+          ref.read(settingsProvider.notifier).setLocalLibraryPath(treeUri);
+        }
+      }
+    } else {
+      // Legacy: request permission and use file picker for older Android / iOS
+      if (!_hasStoragePermission) {
+        final granted = await _requestStoragePermission();
+        if (!granted) return;
+      }
+      // Fallback for older devices
+      final result = await FilePicker.platform.getDirectoryPath();
+      if (result != null) {
+        ref.read(settingsProvider.notifier).setLocalLibraryPath(result);
+      }
     }
   }
 
@@ -232,6 +261,7 @@ class _LibrarySettingsPageState extends ConsumerState<LibrarySettingsPage> {
               scanProgress: libraryState.scanProgress,
               scanCurrentFile: libraryState.scanCurrentFile,
               scanTotalFiles: libraryState.scanTotalFiles,
+              scannedFiles: libraryState.scannedFiles,
               lastScannedAt: libraryState.lastScannedAt,
             ),
           ),
@@ -263,7 +293,7 @@ class _LibrarySettingsPageState extends ConsumerState<LibrarySettingsPage> {
                     title: context.l10n.libraryFolder,
                     subtitle: settings.localLibraryPath.isEmpty
                         ? context.l10n.libraryFolderHint
-                        : settings.localLibraryPath,
+                        : _getDisplayPath(settings.localLibraryPath),
                     onTap: settings.localLibraryEnabled
                         ? _pickLibraryFolder
                         : null,
@@ -452,6 +482,7 @@ class _LibraryHeroCard extends StatelessWidget {
   final double scanProgress;
   final String? scanCurrentFile;
   final int scanTotalFiles;
+  final int scannedFiles;
   final DateTime? lastScannedAt;
 
   const _LibraryHeroCard({
@@ -460,6 +491,7 @@ class _LibraryHeroCard extends StatelessWidget {
     required this.scanProgress,
     this.scanCurrentFile,
     required this.scanTotalFiles,
+    required this.scannedFiles,
     this.lastScannedAt,
   });
 
@@ -584,7 +616,7 @@ class _LibraryHeroCard extends StatelessWidget {
                   fit: BoxFit.scaleDown,
                   alignment: Alignment.centerLeft,
                   child: Text(
-                    itemCount.toString(),
+                    isScanning ? scannedFiles.toString() : itemCount.toString(),
                     style: TextStyle(
                       fontSize: 48,
                       fontWeight: FontWeight.bold,
@@ -596,10 +628,12 @@ class _LibraryHeroCard extends StatelessWidget {
                 ),
                 const SizedBox(height: 4),
                 Text(
-                  context.l10n
-                      .libraryTracksCount(itemCount)
-                      .replaceAll(itemCount.toString(), '')
-                      .trim(), // Getting just the label part if possible, or just use the full string if not
+                  isScanning
+                      ? context.l10n.libraryTracksCount(scannedFiles).replaceAll(scannedFiles.toString(), '').trim()
+                      : context.l10n
+                          .libraryTracksCount(itemCount)
+                          .replaceAll(itemCount.toString(), '')
+                          .trim(),
                   style: TextStyle(
                     fontSize: 16,
                     color: colorScheme.onSurfaceVariant,

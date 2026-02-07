@@ -50,6 +50,7 @@ class _HomeTabState extends ConsumerState<HomeTab> with AutomaticKeepAliveClient
   String? _lastSearchQuery;
   late final ProviderSubscription<TrackState> _trackStateSub;
   late final ProviderSubscription<bool> _extensionInitSub;
+  late final ProviderSubscription<bool> _homeFeedExtSub;
   
   Timer? _liveSearchDebounce;
   bool _isLiveSearchInProgress = false;
@@ -88,6 +89,20 @@ class _HomeTabState extends ConsumerState<HomeTab> with AutomaticKeepAliveClient
         }
       },
     );
+    
+    // Watch for new homeFeed extension being installed/enabled after init
+    _homeFeedExtSub = ref.listenManual<bool>(
+      extensionProvider.select((s) => s.extensions.any((e) => e.enabled && e.hasHomeFeed)),
+      (previous, next) {
+        if (next == true && previous != true) {
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            if (mounted) {
+              ref.read(exploreProvider.notifier).fetchHomeFeed(forceRefresh: true);
+            }
+          });
+        }
+      },
+    );
   }
   
   void _fetchExploreIfNeeded() {
@@ -106,6 +121,7 @@ class _HomeTabState extends ConsumerState<HomeTab> with AutomaticKeepAliveClient
     _liveSearchDebounce?.cancel();
     _trackStateSub.close();
     _extensionInitSub.close();
+    _homeFeedExtSub.close();
     _urlController.removeListener(_onSearchChanged);
     _searchFocusNode.removeListener(_onSearchFocusChanged);
     _urlController.dispose();

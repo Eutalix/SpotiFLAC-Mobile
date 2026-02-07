@@ -325,6 +325,11 @@ void setUseAllFilesAccess(bool enabled) {
     state = state.copyWith(localLibraryShowDuplicates: show);
     _saveSettings();
   }
+
+  void setTutorialComplete() {
+    state = state.copyWith(hasCompletedTutorial: true);
+    _saveSettings();
+  }
 }
 
 final settingsProvider = NotifierProvider<SettingsNotifier, AppSettings>(

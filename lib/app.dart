@@ -4,15 +4,27 @@ import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:go_router/go_router.dart';
 import 'package:spotiflac_android/screens/main_shell.dart';
 import 'package:spotiflac_android/screens/setup_screen.dart';
+import 'package:spotiflac_android/screens/tutorial_screen.dart';
 import 'package:spotiflac_android/providers/settings_provider.dart';
 import 'package:spotiflac_android/theme/dynamic_color_wrapper.dart';
 import 'package:spotiflac_android/l10n/app_localizations.dart';
 
 final _routerProvider = Provider<GoRouter>((ref) {
   final isFirstLaunch = ref.watch(settingsProvider.select((s) => s.isFirstLaunch));
+  final hasCompletedTutorial = ref.watch(settingsProvider.select((s) => s.hasCompletedTutorial));
+  
+  // Determine initial location based on app state
+  String initialLocation;
+  if (isFirstLaunch) {
+    initialLocation = '/setup';
+  } else if (!hasCompletedTutorial) {
+    initialLocation = '/tutorial';
+  } else {
+    initialLocation = '/';
+  }
   
   return GoRouter(
-    initialLocation: isFirstLaunch ? '/setup' : '/',
+    initialLocation: initialLocation,
     routes: [
       GoRoute(
         path: '/',
@@ -21,6 +33,10 @@ final _routerProvider = Provider<GoRouter>((ref) {
       GoRoute(
         path: '/setup',
         builder: (context, state) => const SetupScreen(),
+      ),
+      GoRoute(
+        path: '/tutorial',
+        builder: (context, state) => const TutorialScreen(),
       ),
     ],
   );
