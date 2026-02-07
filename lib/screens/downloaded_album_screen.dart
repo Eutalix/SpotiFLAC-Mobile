@@ -1,9 +1,9 @@
+import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:spotiflac_android/services/cover_cache_manager.dart';
-import 'package:spotiflac_android/services/palette_service.dart';
 import 'package:spotiflac_android/l10n/l10n.dart';
 import 'package:spotiflac_android/utils/file_access.dart';
 import 'package:spotiflac_android/providers/download_queue_provider.dart';
@@ -29,7 +29,6 @@ class DownloadedAlbumScreen extends ConsumerStatefulWidget {
 class _DownloadedAlbumScreenState extends ConsumerState<DownloadedAlbumScreen> {
   bool _isSelectionMode = false;
   final Set<String> _selectedIds = {};
-  Color? _dominantColor;
   bool _showTitleInAppBar = false;
   final ScrollController _scrollController = ScrollController();
 
@@ -37,7 +36,6 @@ class _DownloadedAlbumScreenState extends ConsumerState<DownloadedAlbumScreen> {
   void initState() {
     super.initState();
     _scrollController.addListener(_onScroll);
-    _extractDominantColor();
   }
 
   @override
@@ -51,29 +49,6 @@ class _DownloadedAlbumScreenState extends ConsumerState<DownloadedAlbumScreen> {
     final shouldShow = _scrollController.offset > 280;
     if (shouldShow != _showTitleInAppBar) {
       setState(() => _showTitleInAppBar = shouldShow);
-    }
-  }
-
-  Future<void> _extractDominantColor() async {
-    if (widget.coverUrl == null || widget.coverUrl!.isEmpty) return;
-    
-    // Check cache first (instant)
-    final cached = PaletteService.instance.getCached(widget.coverUrl);
-    if (cached != null) {
-      if (mounted && cached != _dominantColor) {
-        setState(() {
-          _dominantColor = cached;
-        });
-      }
-      return;
-    }
-    
-    // Extract in isolate (non-blocking)
-    final color = await PaletteService.instance.extractDominantColor(widget.coverUrl);
-    if (mounted && color != null && color != _dominantColor) {
-      setState(() {
-        _dominantColor = color;
-      });
     }
   }
 
@@ -294,7 +269,6 @@ class _DownloadedAlbumScreenState extends ConsumerState<DownloadedAlbumScreen> {
   Widget _buildAppBar(BuildContext context, ColorScheme colorScheme) {
     final screenWidth = MediaQuery.of(context).size.width;
     final coverSize = screenWidth * 0.5; // 50% of screen width
-    final bgColor = _dominantColor ?? colorScheme.surface;
     
     return SliverAppBar(
       expandedHeight: 320,
@@ -326,19 +300,32 @@ class _DownloadedAlbumScreenState extends ConsumerState<DownloadedAlbumScreen> {
             background: Stack(
               fit: StackFit.expand,
               children: [
-                // Background with dominant color
-                AnimatedContainer(
-                  duration: const Duration(milliseconds: 500),
-                  decoration: BoxDecoration(
-                    gradient: LinearGradient(
-                      begin: Alignment.topCenter,
-                      end: Alignment.bottomCenter,
-                      colors: [
-                        bgColor,
-                        bgColor.withValues(alpha: 0.8),
-                        colorScheme.surface,
-                      ],
-                      stops: const [0.0, 0.6, 1.0],
+                // Blurred cover background
+                if (widget.coverUrl != null)
+                  CachedNetworkImage(
+                    imageUrl: widget.coverUrl!,
+                    fit: BoxFit.cover,
+                    cacheManager: CoverCacheManager.instance,
+                    placeholder: (_, _) => Container(color: colorScheme.surface),
+                    errorWidget: (_, _, _) => Container(color: colorScheme.surface),
+                  )
+                else
+                  Container(color: colorScheme.surface),
+                ClipRect(
+                  child: BackdropFilter(
+                    filter: ImageFilter.blur(sigmaX: 30, sigmaY: 30),
+                    child: Container(color: colorScheme.surface.withValues(alpha: 0.4)),
+                  ),
+                ),
+                Positioned(
+                  left: 0, right: 0, bottom: 0, height: 80,
+                  child: Container(
+                    decoration: BoxDecoration(
+                      gradient: LinearGradient(
+                        begin: Alignment.topCenter,
+                        end: Alignment.bottomCenter,
+                        colors: [colorScheme.surface.withValues(alpha: 0.0), colorScheme.surface],
+                      ),
                     ),
                   ),
                 ),

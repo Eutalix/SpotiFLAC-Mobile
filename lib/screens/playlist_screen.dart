@@ -1,7 +1,7 @@
+import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:cached_network_image/cached_network_image.dart';
-import 'package:spotiflac_android/services/palette_service.dart';
 import 'package:spotiflac_android/services/cover_cache_manager.dart';
 import 'package:spotiflac_android/services/platform_bridge.dart';
 import 'package:spotiflac_android/l10n/l10n.dart';
@@ -32,7 +32,6 @@ class PlaylistScreen extends ConsumerStatefulWidget {
 }
 
 class _PlaylistScreenState extends ConsumerState<PlaylistScreen> {
-  Color? _dominantColor;
   bool _showTitleInAppBar = false;
   final ScrollController _scrollController = ScrollController();
   List<Track>? _fetchedTracks;
@@ -45,7 +44,6 @@ class _PlaylistScreenState extends ConsumerState<PlaylistScreen> {
   void initState() {
     super.initState();
     _scrollController.addListener(_onScroll);
-    _extractDominantColor();
     _fetchTracksIfNeeded();
   }
 
@@ -122,14 +120,6 @@ class _PlaylistScreenState extends ConsumerState<PlaylistScreen> {
     }
   }
 
-  Future<void> _extractDominantColor() async {
-    if (widget.coverUrl == null) return;
-    final color = await PaletteService.instance.extractDominantColor(widget.coverUrl);
-    if (mounted && color != null) {
-      setState(() => _dominantColor = color);
-    }
-  }
-
   @override
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
@@ -151,7 +141,6 @@ class _PlaylistScreenState extends ConsumerState<PlaylistScreen> {
   Widget _buildAppBar(BuildContext context, ColorScheme colorScheme) {
     final screenWidth = MediaQuery.of(context).size.width;
     final coverSize = screenWidth * 0.5; // 50% of screen width
-    final bgColor = _dominantColor ?? colorScheme.surface;
     
     return SliverAppBar(
       expandedHeight: 320,
@@ -183,19 +172,32 @@ class _PlaylistScreenState extends ConsumerState<PlaylistScreen> {
             background: Stack(
               fit: StackFit.expand,
               children: [
-                // Background with dominant color
-                AnimatedContainer(
-                  duration: const Duration(milliseconds: 500),
-                  decoration: BoxDecoration(
-                    gradient: LinearGradient(
-                      begin: Alignment.topCenter,
-                      end: Alignment.bottomCenter,
-                      colors: [
-                        bgColor,
-                        bgColor.withValues(alpha: 0.8),
-                        colorScheme.surface,
-                      ],
-                      stops: const [0.0, 0.6, 1.0],
+                // Blurred cover background
+                if (widget.coverUrl != null)
+                  CachedNetworkImage(
+                    imageUrl: widget.coverUrl!,
+                    fit: BoxFit.cover,
+                    cacheManager: CoverCacheManager.instance,
+                    placeholder: (_, _) => Container(color: colorScheme.surface),
+                    errorWidget: (_, _, _) => Container(color: colorScheme.surface),
+                  )
+                else
+                  Container(color: colorScheme.surface),
+                ClipRect(
+                  child: BackdropFilter(
+                    filter: ImageFilter.blur(sigmaX: 30, sigmaY: 30),
+                    child: Container(color: colorScheme.surface.withValues(alpha: 0.4)),
+                  ),
+                ),
+                Positioned(
+                  left: 0, right: 0, bottom: 0, height: 80,
+                  child: Container(
+                    decoration: BoxDecoration(
+                      gradient: LinearGradient(
+                        begin: Alignment.topCenter,
+                        end: Alignment.bottomCenter,
+                        colors: [colorScheme.surface.withValues(alpha: 0.0), colorScheme.surface],
+                      ),
                     ),
                   ),
                 ),

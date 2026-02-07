@@ -1,7 +1,7 @@
+import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:cached_network_image/cached_network_image.dart';
-import 'package:spotiflac_android/services/palette_service.dart';
 import 'package:spotiflac_android/services/cover_cache_manager.dart';
 import 'package:spotiflac_android/l10n/l10n.dart';
 import 'package:spotiflac_android/models/track.dart';
@@ -69,7 +69,6 @@ class _AlbumScreenState extends ConsumerState<AlbumScreen> {
   List<Track>? _tracks;
   bool _isLoading = false;
   String? _error;
-  Color? _dominantColor;
   bool _showTitleInAppBar = false;
   String? _artistId;
   final ScrollController _scrollController = ScrollController();
@@ -103,8 +102,6 @@ class _AlbumScreenState extends ConsumerState<AlbumScreen> {
     if (_tracks == null || _tracks!.isEmpty) {
       _fetchTracks();
     }
-    
-    _extractDominantColor();
   }
 
   @override
@@ -118,14 +115,6 @@ class _AlbumScreenState extends ConsumerState<AlbumScreen> {
     final shouldShow = _scrollController.offset > 280;
     if (shouldShow != _showTitleInAppBar) {
       setState(() => _showTitleInAppBar = shouldShow);
-    }
-  }
-
-  Future<void> _extractDominantColor() async {
-    if (widget.coverUrl == null) return;
-    final color = await PaletteService.instance.extractDominantColor(widget.coverUrl);
-    if (mounted && color != null) {
-      setState(() => _dominantColor = color);
     }
   }
 
@@ -232,7 +221,6 @@ Future<void> _fetchTracks() async {
   Widget _buildAppBar(BuildContext context, ColorScheme colorScheme) {
     final screenWidth = MediaQuery.of(context).size.width;
     final coverSize = screenWidth * 0.5;
-    final bgColor = _dominantColor ?? colorScheme.surface;
     
     return SliverAppBar(
       expandedHeight: 320,
@@ -264,18 +252,32 @@ Future<void> _fetchTracks() async {
             background: Stack(
               fit: StackFit.expand,
               children: [
-                AnimatedContainer(
-                  duration: const Duration(milliseconds: 500),
-                  decoration: BoxDecoration(
-                    gradient: LinearGradient(
-                      begin: Alignment.topCenter,
-                      end: Alignment.bottomCenter,
-                      colors: [
-                        bgColor,
-                        bgColor.withValues(alpha: 0.8),
-                        colorScheme.surface,
-                      ],
-                      stops: const [0.0, 0.6, 1.0],
+                // Blurred cover background
+                if (widget.coverUrl != null)
+                  CachedNetworkImage(
+                    imageUrl: widget.coverUrl!,
+                    fit: BoxFit.cover,
+                    cacheManager: CoverCacheManager.instance,
+                    placeholder: (_, _) => Container(color: colorScheme.surface),
+                    errorWidget: (_, _, _) => Container(color: colorScheme.surface),
+                  )
+                else
+                  Container(color: colorScheme.surface),
+                ClipRect(
+                  child: BackdropFilter(
+                    filter: ImageFilter.blur(sigmaX: 30, sigmaY: 30),
+                    child: Container(color: colorScheme.surface.withValues(alpha: 0.4)),
+                  ),
+                ),
+                Positioned(
+                  left: 0, right: 0, bottom: 0, height: 80,
+                  child: Container(
+                    decoration: BoxDecoration(
+                      gradient: LinearGradient(
+                        begin: Alignment.topCenter,
+                        end: Alignment.bottomCenter,
+                        colors: [colorScheme.surface.withValues(alpha: 0.0), colorScheme.surface],
+                      ),
                     ),
                   ),
                 ),

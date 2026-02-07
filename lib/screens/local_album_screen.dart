@@ -1,11 +1,11 @@
 import 'dart:io';
+import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:spotiflac_android/l10n/l10n.dart';
 import 'package:spotiflac_android/utils/file_access.dart';
 import 'package:spotiflac_android/services/library_database.dart';
-import 'package:spotiflac_android/services/palette_service.dart';
 import 'package:spotiflac_android/providers/local_library_provider.dart';
 
 /// Screen to display tracks from a local library album
@@ -30,7 +30,6 @@ class LocalAlbumScreen extends ConsumerStatefulWidget {
 class _LocalAlbumScreenState extends ConsumerState<LocalAlbumScreen> {
   bool _isSelectionMode = false;
   final Set<String> _selectedIds = {};
-  Color? _dominantColor;
   bool _showTitleInAppBar = false;
   final ScrollController _scrollController = ScrollController();
   late List<LocalLibraryItem> _sortedTracksCache;
@@ -43,13 +42,6 @@ class _LocalAlbumScreenState extends ConsumerState<LocalAlbumScreen> {
     super.initState();
     _scrollController.addListener(_onScroll);
     _rebuildTrackCaches();
-    final cachedColor = PaletteService.instance.getCached(widget.coverPath);
-    if (cachedColor != null) {
-      _dominantColor = cachedColor;
-    }
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      _extractDominantColor();
-    });
   }
 
   @override
@@ -58,13 +50,6 @@ class _LocalAlbumScreenState extends ConsumerState<LocalAlbumScreen> {
     if (!identical(oldWidget.tracks, widget.tracks) ||
         oldWidget.tracks.length != widget.tracks.length) {
       _rebuildTrackCaches();
-    }
-    if (oldWidget.coverPath != widget.coverPath) {
-      final cachedColor = PaletteService.instance.getCached(widget.coverPath);
-      if (cachedColor != null && cachedColor != _dominantColor) {
-        _dominantColor = cachedColor;
-      }
-      _extractDominantColor();
     }
   }
 
@@ -79,18 +64,6 @@ class _LocalAlbumScreenState extends ConsumerState<LocalAlbumScreen> {
     final shouldShow = _scrollController.offset > 280;
     if (shouldShow != _showTitleInAppBar) {
       setState(() => _showTitleInAppBar = shouldShow);
-    }
-  }
-
-  Future<void> _extractDominantColor() async {
-    if (widget.coverPath == null || widget.coverPath!.isEmpty) return;
-    
-    // Extract color from local file
-    final color = await PaletteService.instance.extractDominantColorFromFile(widget.coverPath!);
-    if (mounted && color != null && color != _dominantColor) {
-      setState(() {
-        _dominantColor = color;
-      });
     }
   }
 
@@ -289,7 +262,6 @@ class _LocalAlbumScreenState extends ConsumerState<LocalAlbumScreen> {
   Widget _buildAppBar(BuildContext context, ColorScheme colorScheme) {
     final screenWidth = MediaQuery.of(context).size.width;
     final coverSize = screenWidth * 0.5;
-    final bgColor = _dominantColor ?? colorScheme.surface;
     
     return SliverAppBar(
       expandedHeight: 320,
@@ -321,19 +293,30 @@ class _LocalAlbumScreenState extends ConsumerState<LocalAlbumScreen> {
             background: Stack(
               fit: StackFit.expand,
               children: [
-                // Background with dominant color
-                AnimatedContainer(
-                  duration: const Duration(milliseconds: 500),
-                  decoration: BoxDecoration(
-                    gradient: LinearGradient(
-                      begin: Alignment.topCenter,
-                      end: Alignment.bottomCenter,
-                      colors: [
-                        bgColor,
-                        bgColor.withValues(alpha: 0.8),
-                        colorScheme.surface,
-                      ],
-                      stops: const [0.0, 0.6, 1.0],
+                // Blurred cover background
+                if (widget.coverPath != null)
+                  Image.file(
+                    File(widget.coverPath!),
+                    fit: BoxFit.cover,
+                    errorBuilder: (_, _, _) => Container(color: colorScheme.surface),
+                  )
+                else
+                  Container(color: colorScheme.surface),
+                ClipRect(
+                  child: BackdropFilter(
+                    filter: ImageFilter.blur(sigmaX: 30, sigmaY: 30),
+                    child: Container(color: colorScheme.surface.withValues(alpha: 0.4)),
+                  ),
+                ),
+                Positioned(
+                  left: 0, right: 0, bottom: 0, height: 80,
+                  child: Container(
+                    decoration: BoxDecoration(
+                      gradient: LinearGradient(
+                        begin: Alignment.topCenter,
+                        end: Alignment.bottomCenter,
+                        colors: [colorScheme.surface.withValues(alpha: 0.0), colorScheme.surface],
+                      ),
                     ),
                   ),
                 ),

@@ -1,5 +1,15 @@
 # Changelog
 
+## [3.5.1] - 2026-02-07
+
+### Performance
+
+- Removed PaletteService (palette_generator) from all screens for faster navigation and reduced memory usage
+- Album, Playlist, Downloaded Album, Local Album, and Track Metadata screens now use blurred cover art as header background instead of dominant color extraction
+- Removed `palette_generator` dependency
+
+---
+
 ## [3.5.0] - 2026-02-07
 
 ### Highlights

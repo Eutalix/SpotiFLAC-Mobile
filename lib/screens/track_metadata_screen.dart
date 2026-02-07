@@ -1,11 +1,11 @@
 import 'dart:io';
+import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:spotiflac_android/services/cover_cache_manager.dart';
 import 'package:spotiflac_android/services/library_database.dart';
-import 'package:spotiflac_android/services/palette_service.dart';
 import 'package:spotiflac_android/utils/file_access.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:share_plus/share_plus.dart';
@@ -31,7 +31,6 @@ class _TrackMetadataScreenState extends ConsumerState<TrackMetadataScreen> {
   String? _rawLyrics;     // Raw LRC with timestamps for embedding
   bool _lyricsLoading = false;
   String? _lyricsError;
-  Color? _dominantColor;
   bool _showTitleInAppBar = false;
   bool _lyricsEmbedded = false;  // Track if lyrics are embedded in file
   bool _isEmbedding = false;     // Track embed operation in progress
@@ -69,10 +68,6 @@ class _TrackMetadataScreenState extends ConsumerState<TrackMetadataScreen> {
     super.initState();
     _scrollController.addListener(_onScroll);
     _checkFile();
-    // Delay palette extraction to avoid jitter during initial build
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      _extractDominantColor();
-    });
   }
 
   @override
@@ -86,35 +81,6 @@ class _TrackMetadataScreenState extends ConsumerState<TrackMetadataScreen> {
     final shouldShow = _scrollController.offset > 280;
     if (shouldShow != _showTitleInAppBar) {
       setState(() => _showTitleInAppBar = shouldShow);
-    }
-  }
-
-  Future<void> _extractDominantColor() async {
-    // For local items with cover path, extract from file
-    if (_isLocalItem && _localCoverPath != null && _localCoverPath!.isNotEmpty) {
-      final color = await PaletteService.instance.extractDominantColorFromFile(_localCoverPath!);
-      if (mounted && color != null && color != _dominantColor) {
-        setState(() => _dominantColor = color);
-      }
-      return;
-    }
-    
-    final coverUrl = _coverUrl;
-    if (coverUrl == null) return;
-    
-    // Check cache first
-    final cachedColor = PaletteService.instance.getCached(coverUrl);
-    if (cachedColor != null) {
-      if (mounted && cachedColor != _dominantColor) {
-        setState(() => _dominantColor = cachedColor);
-      }
-      return;
-    }
-    
-    // Extract using PaletteService (runs in isolate)
-    final color = await PaletteService.instance.extractDominantColor(coverUrl);
-    if (mounted && color != null && color != _dominantColor) {
-      setState(() => _dominantColor = color);
     }
   }
 
@@ -184,7 +150,6 @@ class _TrackMetadataScreenState extends ConsumerState<TrackMetadataScreen> {
     final colorScheme = Theme.of(context).colorScheme;
     final screenWidth = MediaQuery.of(context).size.width;
     final coverSize = screenWidth * 0.5;
-    final bgColor = _dominantColor ?? colorScheme.surface;
 
     return Scaffold(
       body: CustomScrollView(
@@ -217,7 +182,7 @@ class _TrackMetadataScreenState extends ConsumerState<TrackMetadataScreen> {
                 
                 return FlexibleSpaceBar(
                   collapseMode: CollapseMode.none,
-                  background: _buildHeaderBackground(context, colorScheme, coverSize, bgColor, showContent),
+                  background: _buildHeaderBackground(context, colorScheme, coverSize, showContent),
                   stretchModes: const [
                     StretchMode.zoomBackground,
                     StretchMode.blurBackground,
@@ -285,26 +250,59 @@ class _TrackMetadataScreenState extends ConsumerState<TrackMetadataScreen> {
     );
   }
 
-  Widget _buildHeaderBackground(BuildContext context, ColorScheme colorScheme, double coverSize, Color bgColor, bool showContent) {
+  Widget _buildHeaderBackground(BuildContext context, ColorScheme colorScheme, double coverSize, bool showContent) {
     return Stack(
       fit: StackFit.expand,
       children: [
-        AnimatedContainer(
-          duration: const Duration(milliseconds: 500),
-          decoration: BoxDecoration(
-            gradient: LinearGradient(
-              begin: Alignment.topCenter,
-              end: Alignment.bottomCenter,
-              colors: [
-                bgColor,
-                bgColor.withValues(alpha: 0.8),
-                colorScheme.surface,
-              ],
-              stops: const [0.0, 0.6, 1.0],
+        // Blurred cover art background
+        if (_coverUrl != null)
+          CachedNetworkImage(
+            imageUrl: _coverUrl!,
+            fit: BoxFit.cover,
+            cacheManager: CoverCacheManager.instance,
+            placeholder: (_, _) => Container(color: colorScheme.surface),
+            errorWidget: (_, _, _) => Container(color: colorScheme.surface),
+          )
+        else if (_localCoverPath != null && _localCoverPath!.isNotEmpty)
+          Image.file(
+            File(_localCoverPath!),
+            fit: BoxFit.cover,
+            errorBuilder: (_, _, _) => Container(color: colorScheme.surface),
+          )
+        else
+          Container(color: colorScheme.surface),
+        
+        // Blur filter
+        ClipRect(
+          child: BackdropFilter(
+            filter: ImageFilter.blur(sigmaX: 30, sigmaY: 30),
+            child: Container(
+              color: colorScheme.surface.withValues(alpha: 0.4),
             ),
           ),
         ),
         
+        // Bottom fade to surface
+        Positioned(
+          left: 0,
+          right: 0,
+          bottom: 0,
+          height: 80,
+          child: Container(
+            decoration: BoxDecoration(
+              gradient: LinearGradient(
+                begin: Alignment.topCenter,
+                end: Alignment.bottomCenter,
+                colors: [
+                  colorScheme.surface.withValues(alpha: 0.0),
+                  colorScheme.surface,
+                ],
+              ),
+            ),
+          ),
+        ),
+        
+        // Cover art
         AnimatedOpacity(
           duration: const Duration(milliseconds: 150),
           opacity: showContent ? 1.0 : 0.0,
