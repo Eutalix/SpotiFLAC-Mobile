@@ -15,7 +15,8 @@ import 'package:spotiflac_android/providers/local_library_provider.dart';
 import 'package:spotiflac_android/services/platform_bridge.dart';
 import 'package:spotiflac_android/utils/file_access.dart';
 import 'package:spotiflac_android/screens/album_screen.dart';
-import 'package:spotiflac_android/screens/home_tab.dart' show ExtensionAlbumScreen;
+import 'package:spotiflac_android/screens/home_tab.dart'
+    show ExtensionAlbumScreen;
 import 'package:spotiflac_android/widgets/download_service_picker.dart';
 
 /// Simple in-memory cache for artist data
@@ -33,7 +34,8 @@ class _ArtistCache {
     return entry;
   }
 
-  static void set(String artistId, {
+  static void set(
+    String artistId, {
     required List<ArtistAlbum> albums,
     List<Track>? topTracks,
     String? headerImageUrl,
@@ -55,7 +57,7 @@ class _CacheEntry {
   final String? headerImageUrl;
   final int? monthlyListeners;
   final DateTime expiresAt;
-  
+
   _CacheEntry({
     required this.albums,
     this.topTracks,
@@ -99,31 +101,38 @@ class _ArtistScreenState extends ConsumerState<ArtistScreen> {
   String? _headerImageUrl;
   int? _monthlyListeners;
   String? _error;
-  
+
   bool _showTitleInAppBar = false;
   final ScrollController _scrollController = ScrollController();
 
   bool _isSelectionMode = false;
   final Set<String> _selectedAlbumIds = {};
   bool _isFetchingDiscography = false;
+  List<ArtistAlbum>? _albumBucketSource;
+  List<ArtistAlbum> _albumsOnlyBucket = const [];
+  List<ArtistAlbum> _singlesBucket = const [];
+  List<ArtistAlbum> _compilationsBucket = const [];
 
-@override
+  @override
   void initState() {
     super.initState();
-    
+
     _scrollController.addListener(_onScroll);
-    
+
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      final providerId = widget.extensionId ?? 
-                        (widget.artistId.startsWith('deezer:') ? 'deezer' : 'spotify');
-      ref.read(recentAccessProvider.notifier).recordArtistAccess(
-        id: widget.artistId,
-        name: widget.artistName,
-        imageUrl: widget.coverUrl,
-        providerId: providerId,
-      );
+      final providerId =
+          widget.extensionId ??
+          (widget.artistId.startsWith('deezer:') ? 'deezer' : 'spotify');
+      ref
+          .read(recentAccessProvider.notifier)
+          .recordArtistAccess(
+            id: widget.artistId,
+            name: widget.artistName,
+            imageUrl: widget.coverUrl,
+            providerId: providerId,
+          );
     });
-    
+
     if (widget.extensionId != null) {
       _albums = widget.albums;
       _topTracks = widget.topTracks;
@@ -131,15 +140,15 @@ class _ArtistScreenState extends ConsumerState<ArtistScreen> {
       _monthlyListeners = widget.monthlyListeners;
       return;
     }
-    
+
     final cached = _ArtistCache.get(widget.artistId);
-    
+
     if (widget.albums != null) {
       _albums = widget.albums;
       _topTracks = widget.topTracks;
       _headerImageUrl = widget.headerImageUrl;
       _monthlyListeners = widget.monthlyListeners;
-      
+
       if (_topTracks == null || _topTracks!.isEmpty) {
         _fetchDiscography();
       }
@@ -148,13 +157,13 @@ class _ArtistScreenState extends ConsumerState<ArtistScreen> {
       _topTracks = cached.topTracks;
       _headerImageUrl = cached.headerImageUrl;
       _monthlyListeners = cached.monthlyListeners;
-      
+
       if (_topTracks == null || _topTracks!.isEmpty) {
         _fetchDiscography();
       }
     } else {
       _fetchDiscography();
-}
+    }
   }
 
   void _onScroll() {
@@ -179,38 +188,54 @@ class _ArtistScreenState extends ConsumerState<ArtistScreen> {
       List<Track>? topTracks;
       String? headerImage;
       int? listeners;
-      
+
       if (widget.artistId.startsWith('deezer:')) {
         final deezerArtistId = widget.artistId.replaceFirst('deezer:', '');
-        final metadata = await PlatformBridge.getDeezerMetadata('artist', deezerArtistId);
+        final metadata = await PlatformBridge.getDeezerMetadata(
+          'artist',
+          deezerArtistId,
+        );
         final albumsList = metadata['albums'] as List<dynamic>;
-        albums = albumsList.map((a) => _parseArtistAlbum(a as Map<String, dynamic>)).toList();
+        albums = albumsList
+            .map((a) => _parseArtistAlbum(a as Map<String, dynamic>))
+            .toList();
       } else {
         final url = 'https://open.spotify.com/artist/${widget.artistId}';
         final result = await PlatformBridge.handleURLWithExtension(url);
-        
+
         if (result != null && result['artist'] != null) {
           final artistData = result['artist'] as Map<String, dynamic>;
           final albumsList = artistData['albums'] as List<dynamic>? ?? [];
-          albums = albumsList.map((a) => _parseArtistAlbum(a as Map<String, dynamic>)).toList();
-          
-          final topTracksList = artistData['top_tracks'] as List<dynamic>? ?? [];
+          albums = albumsList
+              .map((a) => _parseArtistAlbum(a as Map<String, dynamic>))
+              .toList();
+
+          final topTracksList =
+              artistData['top_tracks'] as List<dynamic>? ?? [];
           if (topTracksList.isNotEmpty) {
-            topTracks = topTracksList.map((t) => _parseTrack(t as Map<String, dynamic>)).toList();
+            topTracks = topTracksList
+                .map((t) => _parseTrack(t as Map<String, dynamic>))
+                .toList();
           }
-          
+
           headerImage = artistData['header_image'] as String?;
           listeners = artistData['listeners'] as int?;
         } else {
-          final metadata = await PlatformBridge.getSpotifyMetadataWithFallback(url);
+          final metadata = await PlatformBridge.getSpotifyMetadataWithFallback(
+            url,
+          );
           final albumsList = metadata['albums'] as List<dynamic>;
-          albums = albumsList.map((a) => _parseArtistAlbum(a as Map<String, dynamic>)).toList();
+          albums = albumsList
+              .map((a) => _parseArtistAlbum(a as Map<String, dynamic>))
+              .toList();
         }
       }
-      
-      final finalHeaderImage = headerImage ?? _headerImageUrl ?? widget.headerImageUrl;
-      final finalListeners = listeners ?? _monthlyListeners ?? widget.monthlyListeners;
-      
+
+      final finalHeaderImage =
+          headerImage ?? _headerImageUrl ?? widget.headerImageUrl;
+      final finalListeners =
+          listeners ?? _monthlyListeners ?? widget.monthlyListeners;
+
       _ArtistCache.set(
         widget.artistId,
         albums: albums,
@@ -218,7 +243,7 @@ class _ArtistScreenState extends ConsumerState<ArtistScreen> {
         headerImageUrl: finalHeaderImage,
         monthlyListeners: finalListeners,
       );
-      
+
       if (mounted) {
         setState(() {
           _albums = albums;
@@ -246,7 +271,7 @@ class _ArtistScreenState extends ConsumerState<ArtistScreen> {
     } else if (durationValue is double) {
       durationMs = durationValue.toInt();
     }
-    
+
     return Track(
       id: (data['spotify_id'] ?? data['id'] ?? '').toString(),
       name: (data['name'] ?? '').toString(),
@@ -276,17 +301,33 @@ class _ArtistScreenState extends ConsumerState<ArtistScreen> {
     );
   }
 
+  void _ensureAlbumBuckets(List<ArtistAlbum> albums) {
+    if (identical(albums, _albumBucketSource)) return;
+    _albumBucketSource = albums;
+    _albumsOnlyBucket = albums
+        .where((a) => a.albumType == 'album')
+        .toList(growable: false);
+    _singlesBucket = albums
+        .where((a) => a.albumType == 'single')
+        .toList(growable: false);
+    _compilationsBucket = albums
+        .where((a) => a.albumType == 'compilation')
+        .toList(growable: false);
+  }
+
   @override
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
     final albums = _albums ?? [];
-    final albumsOnly = albums.where((a) => a.albumType == 'album').toList();
-    final singles = albums.where((a) => a.albumType == 'single').toList();
-    final compilations = albums.where((a) => a.albumType == 'compilation').toList();
+    _ensureAlbumBuckets(albums);
+    final albumsOnly = _albumsOnlyBucket;
+    final singles = _singlesBucket;
+    final compilations = _compilationsBucket;
 
-    final hasDiscography = !_isLoadingDiscography && _error == null && albums.isNotEmpty;
+    final hasDiscography =
+        !_isLoadingDiscography && _error == null && albums.isNotEmpty;
 
-return PopScope(
+    return PopScope(
       canPop: !_isSelectionMode,
       onPopInvokedWithResult: (didPop, result) {
         if (!didPop && _isSelectionMode) {
@@ -294,39 +335,70 @@ return PopScope(
         }
       },
       child: Scaffold(
-      body: Stack(
-        children: [
-          CustomScrollView(
-        controller: _scrollController,
-        slivers: [
-          _buildHeader(context, colorScheme, albums: albums, hasDiscography: hasDiscography),
-          if (_isLoadingDiscography)
-            const SliverToBoxAdapter(child: Padding(
-              padding: EdgeInsets.all(32),
-              child: Center(child: CircularProgressIndicator()),
-            )),
-          if (_error != null)
-            SliverToBoxAdapter(child: Padding(
-              padding: const EdgeInsets.all(16),
-              child: _buildErrorWidget(_error!, colorScheme),
-            )),
-          if (!_isLoadingDiscography && _error == null) ...[
-            if (_topTracks != null && _topTracks!.isNotEmpty)
-              SliverToBoxAdapter(child: _buildPopularSection(colorScheme)),
-            if (albumsOnly.isNotEmpty) 
-              SliverToBoxAdapter(child: _buildAlbumSection(context.l10n.artistAlbums, albumsOnly, colorScheme)),
-            if (singles.isNotEmpty) 
-              SliverToBoxAdapter(child: _buildAlbumSection(context.l10n.artistSingles, singles, colorScheme)),
-            if (compilations.isNotEmpty) 
-              SliverToBoxAdapter(child: _buildAlbumSection(context.l10n.artistCompilations, compilations, colorScheme)),
+        body: Stack(
+          children: [
+            CustomScrollView(
+              controller: _scrollController,
+              slivers: [
+                _buildHeader(
+                  context,
+                  colorScheme,
+                  albums: albums,
+                  hasDiscography: hasDiscography,
+                ),
+                if (_isLoadingDiscography)
+                  const SliverToBoxAdapter(
+                    child: Padding(
+                      padding: EdgeInsets.all(32),
+                      child: Center(child: CircularProgressIndicator()),
+                    ),
+                  ),
+                if (_error != null)
+                  SliverToBoxAdapter(
+                    child: Padding(
+                      padding: const EdgeInsets.all(16),
+                      child: _buildErrorWidget(_error!, colorScheme),
+                    ),
+                  ),
+                if (!_isLoadingDiscography && _error == null) ...[
+                  if (_topTracks != null && _topTracks!.isNotEmpty)
+                    SliverToBoxAdapter(
+                      child: _buildPopularSection(colorScheme),
+                    ),
+                  if (albumsOnly.isNotEmpty)
+                    SliverToBoxAdapter(
+                      child: _buildAlbumSection(
+                        context.l10n.artistAlbums,
+                        albumsOnly,
+                        colorScheme,
+                      ),
+                    ),
+                  if (singles.isNotEmpty)
+                    SliverToBoxAdapter(
+                      child: _buildAlbumSection(
+                        context.l10n.artistSingles,
+                        singles,
+                        colorScheme,
+                      ),
+                    ),
+                  if (compilations.isNotEmpty)
+                    SliverToBoxAdapter(
+                      child: _buildAlbumSection(
+                        context.l10n.artistCompilations,
+                        compilations,
+                        colorScheme,
+                      ),
+                    ),
+                ],
+                SliverToBoxAdapter(
+                  child: SizedBox(height: _isSelectionMode ? 120 : 32),
+                ),
+              ],
+            ),
+            if (_isSelectionMode)
+              _buildSelectionBar(context, colorScheme, albums),
           ],
-          SliverToBoxAdapter(child: SizedBox(height: _isSelectionMode ? 120 : 32)),
-        ],
-      ),
-          if (_isSelectionMode)
-            _buildSelectionBar(context, colorScheme, albums),
-        ],
-      ),
+        ),
       ),
     );
   }
@@ -373,11 +445,20 @@ return PopScope(
     });
   }
 
-  Widget _buildSelectionBar(BuildContext context, ColorScheme colorScheme, List<ArtistAlbum> allAlbums) {
+  Widget _buildSelectionBar(
+    BuildContext context,
+    ColorScheme colorScheme,
+    List<ArtistAlbum> allAlbums,
+  ) {
     final allSelected = _selectedAlbumIds.length == allAlbums.length;
     final selectedCount = _selectedAlbumIds.length;
-    final selectedAlbums = allAlbums.where((a) => _selectedAlbumIds.contains(a.id)).toList();
-    final totalTracks = selectedAlbums.fold<int>(0, (sum, a) => sum + a.totalTracks);
+    final selectedAlbums = allAlbums
+        .where((a) => _selectedAlbumIds.contains(a.id))
+        .toList();
+    final totalTracks = selectedAlbums.fold<int>(
+      0,
+      (sum, a) => sum + a.totalTracks,
+    );
 
     return Positioned(
       left: 0,
@@ -413,27 +494,33 @@ return PopScope(
                     children: [
                       Text(
                         context.l10n.discographySelectedCount(selectedCount),
-                        style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                          fontWeight: FontWeight.w600,
-                        ),
+                        style: Theme.of(context).textTheme.titleMedium
+                            ?.copyWith(fontWeight: FontWeight.w600),
                       ),
                       if (selectedCount > 0)
                         Text(
                           context.l10n.tracksCount(totalTracks),
-                          style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                            color: colorScheme.onSurfaceVariant,
-                          ),
+                          style: Theme.of(context).textTheme.bodySmall
+                              ?.copyWith(color: colorScheme.onSurfaceVariant),
                         ),
                     ],
                   ),
                 ),
                 TextButton(
-                  onPressed: allSelected ? _deselectAll : () => _selectAll(allAlbums),
-                  child: Text(allSelected ? context.l10n.actionDeselect : context.l10n.actionSelectAll),
+                  onPressed: allSelected
+                      ? _deselectAll
+                      : () => _selectAll(allAlbums),
+                  child: Text(
+                    allSelected
+                        ? context.l10n.actionDeselect
+                        : context.l10n.actionSelectAll,
+                  ),
                 ),
                 const SizedBox(width: 8),
                 FilledButton.icon(
-                  onPressed: selectedCount > 0 ? () => _downloadSelectedAlbums(context, selectedAlbums) : null,
+                  onPressed: selectedCount > 0
+                      ? () => _downloadSelectedAlbums(context, selectedAlbums)
+                      : null,
                   icon: const Icon(Icons.download, size: 18),
                   label: Text(context.l10n.discographyDownloadSelected),
                 ),
@@ -445,12 +532,19 @@ return PopScope(
     );
   }
 
-  void _showDiscographyOptions(BuildContext context, ColorScheme colorScheme, List<ArtistAlbum> albums) {
+  void _showDiscographyOptions(
+    BuildContext context,
+    ColorScheme colorScheme,
+    List<ArtistAlbum> albums,
+  ) {
     final albumsOnly = albums.where((a) => a.albumType == 'album').toList();
     final singles = albums.where((a) => a.albumType == 'single').toList();
 
     final totalTracks = albums.fold<int>(0, (sum, a) => sum + a.totalTracks);
-    final albumTracks = albumsOnly.fold<int>(0, (sum, a) => sum + a.totalTracks);
+    final albumTracks = albumsOnly.fold<int>(
+      0,
+      (sum, a) => sum + a.totalTracks,
+    );
     final singleTracks = singles.fold<int>(0, (sum, a) => sum + a.totalTracks);
 
     showModalBottomSheet(
@@ -495,7 +589,10 @@ return PopScope(
                 _DiscographyOptionTile(
                   icon: Icons.library_music,
                   title: context.l10n.discographyDownloadAll,
-                  subtitle: context.l10n.discographyDownloadAllSubtitle(totalTracks, albums.length),
+                  subtitle: context.l10n.discographyDownloadAllSubtitle(
+                    totalTracks,
+                    albums.length,
+                  ),
                   onTap: () {
                     Navigator.pop(context);
                     _downloadAlbums(context, albums);
@@ -505,7 +602,10 @@ return PopScope(
                 _DiscographyOptionTile(
                   icon: Icons.album,
                   title: context.l10n.discographyAlbumsOnly,
-                  subtitle: context.l10n.discographyAlbumsOnlySubtitle(albumTracks, albumsOnly.length),
+                  subtitle: context.l10n.discographyAlbumsOnlySubtitle(
+                    albumTracks,
+                    albumsOnly.length,
+                  ),
                   onTap: () {
                     Navigator.pop(context);
                     _downloadAlbums(context, albumsOnly);
@@ -515,7 +615,10 @@ return PopScope(
                 _DiscographyOptionTile(
                   icon: Icons.music_note,
                   title: context.l10n.discographySinglesOnly,
-                  subtitle: context.l10n.discographySinglesOnlySubtitle(singleTracks, singles.length),
+                  subtitle: context.l10n.discographySinglesOnlySubtitle(
+                    singleTracks,
+                    singles.length,
+                  ),
                   onTap: () {
                     Navigator.pop(context);
                     _downloadAlbums(context, singles);
@@ -538,9 +641,12 @@ return PopScope(
     );
   }
 
-  Future<void> _downloadAlbums(BuildContext context, List<ArtistAlbum> albums) async {
+  Future<void> _downloadAlbums(
+    BuildContext context,
+    List<ArtistAlbum> albums,
+  ) async {
     final settings = ref.read(settingsProvider);
-    
+
     if (settings.askQualityBeforeDownload) {
       DownloadServicePicker.show(
         context,
@@ -553,7 +659,10 @@ return PopScope(
     }
   }
 
-  Future<void> _downloadSelectedAlbums(BuildContext context, List<ArtistAlbum> albums) async {
+  Future<void> _downloadSelectedAlbums(
+    BuildContext context,
+    List<ArtistAlbum> albums,
+  ) async {
     _exitSelectionMode();
     await _downloadAlbums(context, albums);
   }
@@ -564,14 +673,14 @@ return PopScope(
     String? qualityOverride,
   ) async {
     if (_isFetchingDiscography) return;
-    
+
     setState(() => _isFetchingDiscography = true);
 
     if (!mounted) {
       setState(() => _isFetchingDiscography = false);
       return;
     }
-    
+
     showDialog(
       context: context,
       barrierDismissible: false,
@@ -599,10 +708,14 @@ return PopScope(
       }
 
       fetchedCount++;
-      
+
       // Update progress dialog
       if (mounted) {
-        _FetchingProgressDialog.updateProgress(context, fetchedCount, albums.length);
+        _FetchingProgressDialog.updateProgress(
+          context,
+          fetchedCount,
+          albums.length,
+        );
       }
     }
 
@@ -633,9 +746,10 @@ return PopScope(
     int skippedCount = 0;
 
     for (final track in allTracks) {
-      final isDownloaded = historyState.isDownloaded(track.id) ||
+      final isDownloaded =
+          historyState.isDownloaded(track.id) ||
           (track.isrc != null && historyState.getByIsrc(track.isrc!) != null);
-      
+
       if (!isDownloaded) {
         tracksToQueue.add(track);
       } else {
@@ -647,24 +761,31 @@ return PopScope(
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text(context.l10n.discographySkippedDownloaded(0, skippedCount)),
+            content: Text(
+              context.l10n.discographySkippedDownloaded(0, skippedCount),
+            ),
           ),
         );
       }
       return;
     }
 
-    ref.read(downloadQueueProvider.notifier).addMultipleToQueue(
-      tracksToQueue,
-      service,
-      qualityOverride: qualityOverride,
-    );
+    ref
+        .read(downloadQueueProvider.notifier)
+        .addMultipleToQueue(
+          tracksToQueue,
+          service,
+          qualityOverride: qualityOverride,
+        );
 
     if (mounted) {
       final message = skippedCount > 0
-          ? context.l10n.discographySkippedDownloaded(tracksToQueue.length, skippedCount)
+          ? context.l10n.discographySkippedDownloaded(
+              tracksToQueue.length,
+              skippedCount,
+            )
           : context.l10n.discographyAddedToQueue(tracksToQueue.length);
-      
+
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(message),
@@ -682,31 +803,45 @@ return PopScope(
 
   Future<List<Track>> _fetchAlbumTracks(ArtistAlbum album) async {
     if (album.providerId != null && album.providerId!.isNotEmpty) {
-      final result = await PlatformBridge.getAlbumWithExtension(album.providerId!, album.id);
+      final result = await PlatformBridge.getAlbumWithExtension(
+        album.providerId!,
+        album.id,
+      );
       if (result != null && result['tracks'] != null) {
         final tracksList = result['tracks'] as List<dynamic>;
-        return tracksList.map((t) => _parseTrack(t as Map<String, dynamic>)).toList();
+        return tracksList
+            .map((t) => _parseTrack(t as Map<String, dynamic>))
+            .toList();
       }
     } else if (album.id.startsWith('deezer:')) {
       final deezerId = album.id.replaceFirst('deezer:', '');
-      final metadata = await PlatformBridge.getDeezerMetadata('album', deezerId);
+      final metadata = await PlatformBridge.getDeezerMetadata(
+        'album',
+        deezerId,
+      );
       if (metadata['tracks'] != null) {
         final tracksList = metadata['tracks'] as List<dynamic>;
-        return tracksList.map((t) => _parseTrackFromDeezer(t as Map<String, dynamic>, album)).toList();
+        return tracksList
+            .map((t) => _parseTrackFromDeezer(t as Map<String, dynamic>, album))
+            .toList();
       }
     } else {
       final url = 'https://open.spotify.com/album/${album.id}';
       final result = await PlatformBridge.handleURLWithExtension(url);
       if (result != null && result['tracks'] != null) {
         final tracksList = result['tracks'] as List<dynamic>;
-        return tracksList.map((t) => _parseTrack(t as Map<String, dynamic>)).toList();
+        return tracksList
+            .map((t) => _parseTrack(t as Map<String, dynamic>))
+            .toList();
       }
-      
+
       // Fallback to direct Spotify metadata
       final metadata = await PlatformBridge.getSpotifyMetadataWithFallback(url);
       if (metadata['tracks'] != null) {
         final tracksList = metadata['tracks'] as List<dynamic>;
-        return tracksList.map((t) => _parseTrack(t as Map<String, dynamic>)).toList();
+        return tracksList
+            .map((t) => _parseTrack(t as Map<String, dynamic>))
+            .toList();
       }
     }
     return [];
@@ -720,24 +855,29 @@ return PopScope(
     } else if (durationValue is double) {
       durationMs = (durationValue * 1000).toInt();
     }
-    
+
     return Track(
       id: 'deezer:${data['id']}',
       name: (data['title'] ?? data['name'] ?? '').toString(),
-      artistName: (data['artist']?['name'] ?? data['artist'] ?? widget.artistName).toString(),
+      artistName:
+          (data['artist']?['name'] ?? data['artist'] ?? widget.artistName)
+              .toString(),
       albumName: album.name,
       albumArtist: widget.artistName,
       coverUrl: album.coverUrl,
       isrc: data['isrc']?.toString(),
       duration: (durationMs / 1000).round(),
-      trackNumber: data['track_position'] as int? ?? data['track_number'] as int?,
+      trackNumber:
+          data['track_position'] as int? ?? data['track_number'] as int?,
       discNumber: data['disk_number'] as int? ?? data['disc_number'] as int?,
       releaseDate: album.releaseDate,
       albumType: album.albumType,
     );
   }
 
-  Widget _buildHeader(BuildContext context, ColorScheme colorScheme, {
+  Widget _buildHeader(
+    BuildContext context,
+    ColorScheme colorScheme, {
     required List<ArtistAlbum> albums,
     required bool hasDiscography,
   }) {
@@ -748,19 +888,22 @@ return PopScope(
     if (imageUrl == null || imageUrl.isEmpty) {
       imageUrl = widget.coverUrl;
     }
-    
-    final hasValidImage = imageUrl != null && 
-                          imageUrl.isNotEmpty &&
-                          Uri.tryParse(imageUrl)?.hasAuthority == true;
-    
+
+    final hasValidImage =
+        imageUrl != null &&
+        imageUrl.isNotEmpty &&
+        Uri.tryParse(imageUrl)?.hasAuthority == true;
+
     String? listenersText;
     final listeners = _monthlyListeners ?? widget.monthlyListeners;
     if (listeners != null && listeners > 0) {
       final formatter = NumberFormat.compact();
-      listenersText = context.l10n.artistMonthlyListeners(formatter.format(listeners));
+      listenersText = context.l10n.artistMonthlyListeners(
+        formatter.format(listeners),
+      );
     }
-    
-return SliverAppBar(
+
+    return SliverAppBar(
       expandedHeight: hasDiscography ? 420 : 380,
       pinned: true,
       stretch: true,
@@ -785,25 +928,32 @@ return SliverAppBar(
         background: Stack(
           fit: StackFit.expand,
           children: [
-if (hasValidImage)
+            if (hasValidImage)
               CachedNetworkImage(
                 imageUrl: imageUrl,
                 fit: BoxFit.cover,
                 alignment: Alignment.topCenter, // Show top of image (faces)
                 memCacheWidth: 800,
                 cacheManager: CoverCacheManager.instance,
-                placeholder: (context, url) => Container(
-                  color: colorScheme.surfaceContainerHighest,
-                ),
+                placeholder: (context, url) =>
+                    Container(color: colorScheme.surfaceContainerHighest),
                 errorWidget: (context, url, error) => Container(
                   color: colorScheme.surfaceContainerHighest,
-                  child: Icon(Icons.person, size: 80, color: colorScheme.onSurfaceVariant),
+                  child: Icon(
+                    Icons.person,
+                    size: 80,
+                    color: colorScheme.onSurfaceVariant,
+                  ),
                 ),
               )
             else
               Container(
                 color: colorScheme.surfaceContainerHighest,
-                child: Icon(Icons.person, size: 80, color: colorScheme.onSurfaceVariant),
+                child: Icon(
+                  Icons.person,
+                  size: 80,
+                  color: colorScheme.onSurfaceVariant,
+                ),
               ),
             Container(
               decoration: BoxDecoration(
@@ -866,7 +1016,11 @@ if (hasValidImage)
                     SizedBox(
                       height: 40,
                       child: FilledButton.icon(
-                        onPressed: () => _showDiscographyOptions(context, colorScheme, albums),
+                        onPressed: () => _showDiscographyOptions(
+                          context,
+                          colorScheme,
+                          albums,
+                        ),
                         icon: const Icon(Icons.download, size: 18),
                         label: Text(context.l10n.discographyDownload),
                         style: FilledButton.styleFrom(
@@ -885,7 +1039,10 @@ if (hasValidImage)
             ),
           ],
         ),
-        stretchModes: const [StretchMode.zoomBackground, StretchMode.blurBackground],
+        stretchModes: const [
+          StretchMode.zoomBackground,
+          StretchMode.blurBackground,
+        ],
       ),
       leading: IconButton(
         icon: Container(
@@ -903,10 +1060,12 @@ if (hasValidImage)
 
   /// Build Popular tracks section like Spotify
   Widget _buildPopularSection(ColorScheme colorScheme) {
-    if (_topTracks == null || _topTracks!.isEmpty) return const SizedBox.shrink();
-    
+    if (_topTracks == null || _topTracks!.isEmpty) {
+      return const SizedBox.shrink();
+    }
+
     final tracks = _topTracks!.take(5).toList();
-    
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -914,9 +1073,9 @@ if (hasValidImage)
           padding: const EdgeInsets.fromLTRB(16, 24, 16, 12),
           child: Text(
             context.l10n.artistPopular,
-            style: Theme.of(context).textTheme.titleLarge?.copyWith(
-              fontWeight: FontWeight.bold,
-            ),
+            style: Theme.of(
+              context,
+            ).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.bold),
           ),
         ),
         ...tracks.asMap().entries.map((entry) {
@@ -928,153 +1087,198 @@ if (hasValidImage)
     );
   }
 
-  Widget _buildPopularTrackItem(int rank, Track track, ColorScheme colorScheme) {
-    final queueItem = ref.watch(
-      downloadQueueLookupProvider.select((lookup) => lookup.byTrackId[track.id]),
-    );
-    
-    final isInHistory = ref.watch(downloadHistoryProvider.select((state) {
-      return state.isDownloaded(track.id);
-    }));
-    
-    // Check local library for duplicate detection
-    final settings = ref.watch(settingsProvider);
-    final showLocalLibraryIndicator = settings.localLibraryEnabled && settings.localLibraryShowDuplicates;
-    final isInLocalLibrary = showLocalLibraryIndicator 
-        ? ref.watch(localLibraryProvider.select((state) => 
-            state.existsInLibrary(
-              isrc: track.isrc,
-              trackName: track.name,
-              artistName: track.artistName,
-            )))
-        : false;
-    
-    final isQueued = queueItem != null;
-    final isDownloading = queueItem?.status == DownloadStatus.downloading;
-    final isFinalizing = queueItem?.status == DownloadStatus.finalizing;
-    final isCompleted = queueItem?.status == DownloadStatus.completed;
-    final progress = queueItem?.progress ?? 0.0;
-    
-    final showAsDownloaded = isCompleted || (!isQueued && isInHistory) || isInLocalLibrary;
-    
-    return InkWell(
-      onTap: () => _handlePopularTrackTap(track, isQueued: isQueued, isInHistory: isInHistory, isInLocalLibrary: isInLocalLibrary),
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-        child: Row(
-          children: [
-            SizedBox(
-              width: 24,
-              child: Text(
-                '$rank',
-                style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                  color: colorScheme.onSurfaceVariant,
-                ),
-                textAlign: TextAlign.center,
-              ),
-            ),
-            const SizedBox(width: 12),
-            ClipRRect(
-              borderRadius: BorderRadius.circular(4),
-              child: track.coverUrl != null
-? CachedNetworkImage(
-                      imageUrl: track.coverUrl!,
-                      width: 48,
-                      height: 48,
-                      fit: BoxFit.cover,
-                      memCacheWidth: 96,
-                      cacheManager: CoverCacheManager.instance,
-                      placeholder: (context, url) => Container(
-                        width: 48,
-                        height: 48,
-                        color: colorScheme.surfaceContainerHighest,
-                      ),
-                      errorWidget: (context, url, error) => Container(
-                        width: 48,
-                        height: 48,
-                        color: colorScheme.surfaceContainerHighest,
-                        child: Icon(Icons.music_note, color: colorScheme.onSurfaceVariant, size: 24),
-                      ),
-                    )
-                  : Container(
-                      width: 48,
-                      height: 48,
-                      color: colorScheme.surfaceContainerHighest,
-                      child: Icon(Icons.music_note, color: colorScheme.onSurfaceVariant, size: 24),
-                    ),
-            ),
-            const SizedBox(width: 12),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    track.name,
-                    style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                      fontWeight: FontWeight.w500,
-                    ),
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
+  Widget _buildPopularTrackItem(
+    int rank,
+    Track track,
+    ColorScheme colorScheme,
+  ) {
+    return Consumer(
+      builder: (context, ref, child) {
+        final queueItem = ref.watch(
+          downloadQueueLookupProvider.select(
+            (lookup) => lookup.byTrackId[track.id],
+          ),
+        );
+
+        final isInHistory = ref.watch(
+          downloadHistoryProvider.select(
+            (state) => state.isDownloaded(track.id),
+          ),
+        );
+
+        final showLocalLibraryIndicator = ref.watch(
+          settingsProvider.select(
+            (s) => s.localLibraryEnabled && s.localLibraryShowDuplicates,
+          ),
+        );
+        final isInLocalLibrary = showLocalLibraryIndicator
+            ? ref.watch(
+                localLibraryProvider.select(
+                  (state) => state.existsInLibrary(
+                    isrc: track.isrc,
+                    trackName: track.name,
+                    artistName: track.artistName,
                   ),
-                  if (track.albumName.isNotEmpty)
-                    Text(
-                      track.albumName,
-                      style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                        color: colorScheme.onSurfaceVariant,
-                      ),
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
+                ),
+              )
+            : false;
+
+        final isQueued = queueItem != null;
+        final isDownloading = queueItem?.status == DownloadStatus.downloading;
+        final isFinalizing = queueItem?.status == DownloadStatus.finalizing;
+        final isCompleted = queueItem?.status == DownloadStatus.completed;
+        final progress = queueItem?.progress ?? 0.0;
+
+        final showAsDownloaded =
+            isCompleted || (!isQueued && isInHistory) || isInLocalLibrary;
+
+        return InkWell(
+          onTap: () => _handlePopularTrackTap(
+            track,
+            isQueued: isQueued,
+            isInHistory: isInHistory,
+            isInLocalLibrary: isInLocalLibrary,
+          ),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+            child: Row(
+              children: [
+                SizedBox(
+                  width: 24,
+                  child: Text(
+                    '$rank',
+                    style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                      color: colorScheme.onSurfaceVariant,
                     ),
-                ],
-              ),
+                    textAlign: TextAlign.center,
+                  ),
+                ),
+                const SizedBox(width: 12),
+                ClipRRect(
+                  borderRadius: BorderRadius.circular(4),
+                  child: track.coverUrl != null
+                      ? CachedNetworkImage(
+                          imageUrl: track.coverUrl!,
+                          width: 48,
+                          height: 48,
+                          fit: BoxFit.cover,
+                          memCacheWidth: 96,
+                          cacheManager: CoverCacheManager.instance,
+                          placeholder: (context, url) => Container(
+                            width: 48,
+                            height: 48,
+                            color: colorScheme.surfaceContainerHighest,
+                          ),
+                          errorWidget: (context, url, error) => Container(
+                            width: 48,
+                            height: 48,
+                            color: colorScheme.surfaceContainerHighest,
+                            child: Icon(
+                              Icons.music_note,
+                              color: colorScheme.onSurfaceVariant,
+                              size: 24,
+                            ),
+                          ),
+                        )
+                      : Container(
+                          width: 48,
+                          height: 48,
+                          color: colorScheme.surfaceContainerHighest,
+                          child: Icon(
+                            Icons.music_note,
+                            color: colorScheme.onSurfaceVariant,
+                            size: 24,
+                          ),
+                        ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        track.name,
+                        style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                          fontWeight: FontWeight.w500,
+                        ),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                      if (track.albumName.isNotEmpty)
+                        Text(
+                          track.albumName,
+                          style: Theme.of(context).textTheme.bodySmall
+                              ?.copyWith(color: colorScheme.onSurfaceVariant),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                    ],
+                  ),
+                ),
+                _buildPopularDownloadButton(
+                  track: track,
+                  colorScheme: colorScheme,
+                  isQueued: isQueued,
+                  isDownloading: isDownloading,
+                  isFinalizing: isFinalizing,
+                  showAsDownloaded: showAsDownloaded,
+                  isInHistory: isInHistory,
+                  isInLocalLibrary: isInLocalLibrary,
+                  progress: progress,
+                ),
+              ],
             ),
-            _buildPopularDownloadButton(
-              track: track,
-              colorScheme: colorScheme,
-              isQueued: isQueued,
-              isDownloading: isDownloading,
-              isFinalizing: isFinalizing,
-              showAsDownloaded: showAsDownloaded,
-              isInHistory: isInHistory,
-              isInLocalLibrary: isInLocalLibrary,
-              progress: progress,
-            ),
-          ],
-        ),
-      ),
+          ),
+        );
+      },
     );
   }
 
   /// Handle tap on popular track item
-  void _handlePopularTrackTap(Track track, {required bool isQueued, required bool isInHistory, required bool isInLocalLibrary}) async {
+  void _handlePopularTrackTap(
+    Track track, {
+    required bool isQueued,
+    required bool isInHistory,
+    required bool isInLocalLibrary,
+  }) async {
     if (isQueued) return;
-    
+
     if (isInLocalLibrary) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(context.l10n.snackbarAlreadyInLibrary(track.name))),
+          SnackBar(
+            content: Text(context.l10n.snackbarAlreadyInLibrary(track.name)),
+          ),
         );
       }
       return;
     }
-    
+
     if (isInHistory) {
-      final historyItem = ref.read(downloadHistoryProvider.notifier).getBySpotifyId(track.id);
+      final historyItem = ref
+          .read(downloadHistoryProvider.notifier)
+          .getBySpotifyId(track.id);
       if (historyItem != null) {
         final exists = await fileExists(historyItem.filePath);
         if (exists) {
           if (mounted) {
             ScaffoldMessenger.of(context).showSnackBar(
-              SnackBar(content: Text(context.l10n.snackbarAlreadyDownloaded(track.name))),
+              SnackBar(
+                content: Text(
+                  context.l10n.snackbarAlreadyDownloaded(track.name),
+                ),
+              ),
             );
           }
           return;
         } else {
-          ref.read(downloadHistoryProvider.notifier).removeBySpotifyId(track.id);
+          ref
+              .read(downloadHistoryProvider.notifier)
+              .removeBySpotifyId(track.id);
         }
       }
     }
-    
+
     _downloadTrack(track);
   }
 
@@ -1091,10 +1295,15 @@ if (hasValidImage)
   }) {
     const double size = 40.0;
     const double iconSize = 20.0;
-    
+
     if (showAsDownloaded) {
       return GestureDetector(
-        onTap: () => _handlePopularTrackTap(track, isQueued: isQueued, isInHistory: isInHistory, isInLocalLibrary: isInLocalLibrary),
+        onTap: () => _handlePopularTrackTap(
+          track,
+          isQueued: isQueued,
+          isInHistory: isInHistory,
+          isInLocalLibrary: isInLocalLibrary,
+        ),
         child: Container(
           width: size,
           height: size,
@@ -1102,7 +1311,11 @@ if (hasValidImage)
             color: colorScheme.primaryContainer,
             shape: BoxShape.circle,
           ),
-          child: Icon(Icons.check, color: colorScheme.onPrimaryContainer, size: iconSize),
+          child: Icon(
+            Icons.check,
+            color: colorScheme.onPrimaryContainer,
+            size: iconSize,
+          ),
         ),
       );
     } else if (isFinalizing) {
@@ -1137,7 +1350,11 @@ if (hasValidImage)
             if (progress > 0)
               Text(
                 '${(progress * 100).toInt()}',
-                style: TextStyle(fontSize: 9, fontWeight: FontWeight.bold, color: colorScheme.primary),
+                style: TextStyle(
+                  fontSize: 9,
+                  fontWeight: FontWeight.bold,
+                  color: colorScheme.primary,
+                ),
               ),
           ],
         ),
@@ -1150,7 +1367,11 @@ if (hasValidImage)
           color: colorScheme.surfaceContainerHighest,
           shape: BoxShape.circle,
         ),
-        child: Icon(Icons.hourglass_empty, color: colorScheme.onSurfaceVariant, size: iconSize),
+        child: Icon(
+          Icons.hourglass_empty,
+          color: colorScheme.onSurfaceVariant,
+          size: iconSize,
+        ),
       );
     } else {
       return GestureDetector(
@@ -1162,7 +1383,11 @@ if (hasValidImage)
             color: colorScheme.secondaryContainer,
             shape: BoxShape.circle,
           ),
-          child: Icon(Icons.download, color: colorScheme.onSecondaryContainer, size: iconSize),
+          child: Icon(
+            Icons.download,
+            color: colorScheme.onSecondaryContainer,
+            size: iconSize,
+          ),
         ),
       );
     }
@@ -1171,7 +1396,9 @@ if (hasValidImage)
   void _downloadTrack(Track track) {
     final settings = ref.read(settingsProvider);
     ref.read(settingsProvider.notifier).setHasSearchedBefore();
-    ref.read(downloadQueueProvider.notifier).addToQueue(track, settings.defaultService);
+    ref
+        .read(downloadQueueProvider.notifier)
+        .addToQueue(track, settings.defaultService);
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
         content: Text(context.l10n.snackbarAddedToQueue(track.name)),
@@ -1180,7 +1407,11 @@ if (hasValidImage)
     );
   }
 
-  Widget _buildAlbumSection(String title, List<ArtistAlbum> albums, ColorScheme colorScheme) {
+  Widget _buildAlbumSection(
+    String title,
+    List<ArtistAlbum> albums,
+    ColorScheme colorScheme,
+  ) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -1188,9 +1419,9 @@ if (hasValidImage)
           padding: const EdgeInsets.fromLTRB(16, 24, 16, 12),
           child: Text(
             '$title (${albums.length})',
-            style: Theme.of(context).textTheme.titleLarge?.copyWith(
-              fontWeight: FontWeight.bold,
-            ),
+            style: Theme.of(
+              context,
+            ).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.bold),
           ),
         ),
         SizedBox(
@@ -1214,7 +1445,7 @@ if (hasValidImage)
 
   Widget _buildAlbumCard(ArtistAlbum album, ColorScheme colorScheme) {
     final isSelected = _selectedAlbumIds.contains(album.id);
-    
+
     return GestureDetector(
       onTap: () {
         if (_isSelectionMode) {
@@ -1236,35 +1467,43 @@ if (hasValidImage)
           children: [
             Stack(
               children: [
-            ClipRRect(
-              borderRadius: BorderRadius.circular(8),
-              child: album.coverUrl != null
-? CachedNetworkImage(
-                      imageUrl: album.coverUrl!,
-                      width: 140,
-                      height: 140,
-                      fit: BoxFit.cover,
-                      memCacheWidth: 280,
-                      cacheManager: CoverCacheManager.instance,
-                      placeholder: (context, url) => Container(
-                        width: 140,
-                        height: 140,
-                        color: colorScheme.surfaceContainerHighest,
-                      ),
-                      errorWidget: (context, url, error) => Container(
-                        width: 140,
-                        height: 140,
-                        color: colorScheme.surfaceContainerHighest,
-                        child: Icon(Icons.album, color: colorScheme.onSurfaceVariant, size: 40),
-                      ),
-                    )
-                  : Container(
-                      width: 140,
-                      height: 140,
-                      color: colorScheme.surfaceContainerHighest,
-                      child: Icon(Icons.album, color: colorScheme.onSurfaceVariant, size: 40),
-                    ),
-            ),
+                ClipRRect(
+                  borderRadius: BorderRadius.circular(8),
+                  child: album.coverUrl != null
+                      ? CachedNetworkImage(
+                          imageUrl: album.coverUrl!,
+                          width: 140,
+                          height: 140,
+                          fit: BoxFit.cover,
+                          memCacheWidth: 280,
+                          cacheManager: CoverCacheManager.instance,
+                          placeholder: (context, url) => Container(
+                            width: 140,
+                            height: 140,
+                            color: colorScheme.surfaceContainerHighest,
+                          ),
+                          errorWidget: (context, url, error) => Container(
+                            width: 140,
+                            height: 140,
+                            color: colorScheme.surfaceContainerHighest,
+                            child: Icon(
+                              Icons.album,
+                              color: colorScheme.onSurfaceVariant,
+                              size: 40,
+                            ),
+                          ),
+                        )
+                      : Container(
+                          width: 140,
+                          height: 140,
+                          color: colorScheme.surfaceContainerHighest,
+                          child: Icon(
+                            Icons.album,
+                            color: colorScheme.onSurfaceVariant,
+                            size: 40,
+                          ),
+                        ),
+                ),
                 // Selection overlay
                 if (_isSelectionMode)
                   Positioned.fill(
@@ -1272,10 +1511,10 @@ if (hasValidImage)
                       duration: const Duration(milliseconds: 200),
                       decoration: BoxDecoration(
                         borderRadius: BorderRadius.circular(8),
-                        color: isSelected 
+                        color: isSelected
                             ? colorScheme.primary.withValues(alpha: 0.3)
                             : Colors.black.withValues(alpha: 0.1),
-                        border: isSelected 
+                        border: isSelected
                             ? Border.all(color: colorScheme.primary, width: 3)
                             : null,
                       ),
@@ -1291,19 +1530,23 @@ if (hasValidImage)
                       width: 28,
                       height: 28,
                       decoration: BoxDecoration(
-                        color: isSelected 
-                            ? colorScheme.primary 
+                        color: isSelected
+                            ? colorScheme.primary
                             : colorScheme.surface.withValues(alpha: 0.9),
                         shape: BoxShape.circle,
                         border: Border.all(
-                          color: isSelected 
-                              ? colorScheme.primary 
+                          color: isSelected
+                              ? colorScheme.primary
                               : colorScheme.outline,
                           width: 2,
                         ),
                       ),
                       child: isSelected
-                          ? Icon(Icons.check, color: colorScheme.onPrimary, size: 18)
+                          ? Icon(
+                              Icons.check,
+                              color: colorScheme.onPrimary,
+                              size: 18,
+                            )
                           : null,
                     ),
                   ),
@@ -1312,17 +1555,19 @@ if (hasValidImage)
             const SizedBox(height: 8),
             Text(
               album.name,
-              style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                fontWeight: FontWeight.w500,
-              ),
+              style: Theme.of(
+                context,
+              ).textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w500),
               maxLines: 2,
               overflow: TextOverflow.ellipsis,
             ),
             const SizedBox(height: 2),
             Text(
-              album.totalTracks > 0 
+              album.totalTracks > 0
                   ? '${album.releaseDate.length >= 4 ? album.releaseDate.substring(0, 4) : album.releaseDate} ${context.l10n.tracksCount(album.totalTracks)}'
-                  : album.releaseDate.length >= 4 ? album.releaseDate.substring(0, 4) : album.releaseDate,
+                  : album.releaseDate.length >= 4
+                  ? album.releaseDate.substring(0, 4)
+                  : album.releaseDate,
               style: Theme.of(context).textTheme.bodySmall?.copyWith(
                 color: colorScheme.onSurfaceVariant,
               ),
@@ -1337,32 +1582,39 @@ if (hasValidImage)
 
   void _navigateToAlbum(ArtistAlbum album) {
     ref.read(settingsProvider.notifier).setHasSearchedBefore();
-    
+
     if (album.providerId != null && album.providerId!.isNotEmpty) {
-      Navigator.push(context, MaterialPageRoute(
-        builder: (context) => ExtensionAlbumScreen(
-          extensionId: album.providerId!,
-          albumId: album.id,
-          albumName: album.name,
-          coverUrl: album.coverUrl,
+      Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (context) => ExtensionAlbumScreen(
+            extensionId: album.providerId!,
+            albumId: album.id,
+            albumName: album.name,
+            coverUrl: album.coverUrl,
+          ),
         ),
-      ));
+      );
     } else {
-      Navigator.push(context, MaterialPageRoute(
-        builder: (context) => AlbumScreen(
-          albumId: album.id,
-          albumName: album.name,
-          coverUrl: album.coverUrl,
+      Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (context) => AlbumScreen(
+            albumId: album.id,
+            albumName: album.name,
+            coverUrl: album.coverUrl,
+          ),
         ),
-      ));
+      );
     }
   }
 
   Widget _buildErrorWidget(String error, ColorScheme colorScheme) {
-    final isRateLimit = error.contains('429') || 
-                        error.toLowerCase().contains('rate limit') ||
-                        error.toLowerCase().contains('too many requests');
-    
+    final isRateLimit =
+        error.contains('429') ||
+        error.toLowerCase().contains('rate limit') ||
+        error.toLowerCase().contains('too many requests');
+
     if (isRateLimit) {
       return Card(
         elevation: 0,
@@ -1401,7 +1653,7 @@ if (hasValidImage)
         ),
       );
     }
-    
+
     return Card(
       elevation: 0,
       color: colorScheme.errorContainer.withValues(alpha: 0.5),
@@ -1412,7 +1664,9 @@ if (hasValidImage)
           children: [
             Icon(Icons.error_outline, color: colorScheme.error),
             const SizedBox(width: 12),
-            Expanded(child: Text(error, style: TextStyle(color: colorScheme.error))),
+            Expanded(
+              child: Text(error, style: TextStyle(color: colorScheme.error)),
+            ),
           ],
         ),
       ),
@@ -1449,7 +1703,7 @@ class _DiscographyOptionTile extends StatelessWidget {
       ),
       title: Text(title, style: const TextStyle(fontWeight: FontWeight.w500)),
       subtitle: Text(
-        subtitle, 
+        subtitle,
         style: TextStyle(color: colorScheme.onSurfaceVariant, fontSize: 12),
       ),
       trailing: Icon(Icons.chevron_right, color: colorScheme.onSurfaceVariant),
@@ -1470,12 +1724,14 @@ class _FetchingProgressDialog extends StatefulWidget {
 
   // Static method to update progress from outside
   static void updateProgress(BuildContext context, int current, int total) {
-    final state = context.findAncestorStateOfType<_FetchingProgressDialogState>();
+    final state = context
+        .findAncestorStateOfType<_FetchingProgressDialogState>();
     state?._updateProgress(current, total);
   }
 
   @override
-  State<_FetchingProgressDialog> createState() => _FetchingProgressDialogState();
+  State<_FetchingProgressDialog> createState() =>
+      _FetchingProgressDialogState();
 }
 
 class _FetchingProgressDialogState extends State<_FetchingProgressDialog> {
@@ -1527,9 +1783,9 @@ class _FetchingProgressDialogState extends State<_FetchingProgressDialog> {
           const SizedBox(height: 20),
           Text(
             context.l10n.discographyFetchingTracks,
-            style: Theme.of(context).textTheme.titleMedium?.copyWith(
-              fontWeight: FontWeight.w600,
-            ),
+            style: Theme.of(
+              context,
+            ).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w600),
           ),
           const SizedBox(height: 8),
           Text(
