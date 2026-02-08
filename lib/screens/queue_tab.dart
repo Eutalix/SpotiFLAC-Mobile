@@ -810,6 +810,125 @@ class _QueueTabState extends ConsumerState<QueueTab> {
         .toList(growable: false);
   }
 
+  /// Check if a date passes the current date range filter
+  bool _passesDateFilter(DateTime date) {
+    if (_filterDateRange == null) return true;
+    final now = DateTime.now();
+    switch (_filterDateRange) {
+      case 'today':
+        return date.year == now.year &&
+            date.month == now.month &&
+            date.day == now.day;
+      case 'week':
+        return !date.isBefore(now.subtract(const Duration(days: 7)));
+      case 'month':
+        return !date.isBefore(DateTime(now.year, now.month - 1, now.day));
+      case 'year':
+        return date.year == now.year;
+      default:
+        return true;
+    }
+  }
+
+  /// Check if a quality string passes the current quality filter
+  bool _passesQualityFilter(String? quality) {
+    if (_filterQuality == null) return true;
+    if (quality == null) return _filterQuality == 'lossy';
+    final q = quality.toLowerCase();
+    switch (_filterQuality) {
+      case 'hires':
+        return q.startsWith('24');
+      case 'cd':
+        return q.startsWith('16');
+      case 'lossy':
+        return !q.startsWith('24') && !q.startsWith('16');
+      default:
+        return true;
+    }
+  }
+
+  /// Check if a file path passes the current format filter
+  bool _passesFormatFilter(String filePath) {
+    if (_filterFormat == null) return true;
+    return filePath.split('.').last.toLowerCase() == _filterFormat;
+  }
+
+  /// Filter grouped download albums by search query + advanced filters
+  List<_GroupedAlbum> _filterGroupedAlbums(
+    List<_GroupedAlbum> albums,
+    String searchQuery,
+  ) {
+    if (_activeFilterCount == 0 && searchQuery.isEmpty) return albums;
+
+    // Source filter: if filtering local only, hide all download albums
+    if (_filterSource == 'local') return const [];
+
+    final result = <_GroupedAlbum>[];
+    for (final album in albums) {
+      if (searchQuery.isNotEmpty && !album.searchKey.contains(searchQuery)) {
+        continue;
+      }
+
+      // Filter tracks within the album by advanced filters
+      if (_filterQuality != null ||
+          _filterFormat != null ||
+          _filterDateRange != null) {
+        final filteredTracks = album.tracks.where((track) {
+          if (!_passesDateFilter(track.downloadedAt)) return false;
+          if (!_passesQualityFilter(track.quality)) return false;
+          if (!_passesFormatFilter(track.filePath)) return false;
+          return true;
+        }).toList(growable: false);
+
+        if (filteredTracks.isEmpty) continue;
+      }
+
+      result.add(album);
+    }
+    return result;
+  }
+
+  /// Filter grouped local albums by search query + advanced filters
+  List<_GroupedLocalAlbum> _filterGroupedLocalAlbums(
+    List<_GroupedLocalAlbum> albums,
+    String searchQuery,
+  ) {
+    if (_activeFilterCount == 0 && searchQuery.isEmpty) return albums;
+
+    // Source filter: if filtering downloaded only, hide all local albums
+    if (_filterSource == 'downloaded') return const [];
+
+    final result = <_GroupedLocalAlbum>[];
+    for (final album in albums) {
+      if (searchQuery.isNotEmpty && !album.searchKey.contains(searchQuery)) {
+        continue;
+      }
+
+      // Filter tracks within the album by advanced filters
+      if (_filterQuality != null ||
+          _filterFormat != null ||
+          _filterDateRange != null) {
+        final filteredTracks = album.tracks.where((track) {
+          if (!_passesDateFilter(track.scannedAt)) return false;
+          // Build quality string for local items
+          String? quality;
+          if (track.bitDepth != null && track.sampleRate != null) {
+            quality =
+                '${track.bitDepth}bit/${(track.sampleRate! / 1000).toStringAsFixed(1)}kHz';
+          }
+          if (!_passesQualityFilter(quality)) return false;
+          if (!_passesFormatFilter(track.filePath)) return false;
+          return true;
+        }).toList(growable: false);
+
+        if (filteredTracks.isEmpty) continue;
+      }
+
+      result.add(album);
+    }
+    return result;
+  }
+
   Set<String> _getAvailableFormats(List<UnifiedLibraryItem> items) {
     final formats = <String>{};
     for (final item in items) {
@@ -1499,8 +1618,6 @@ class _QueueTabState extends ConsumerState<QueueTab> {
                                 ?.copyWith(fontWeight: FontWeight.bold),
                           ),
                           const Spacer(),
-                          _buildExportFailedButton(context, ref, colorScheme),
-                          const SizedBox(width: 4),
                           _buildPauseResumeButton(context, ref, colorScheme),
                           const SizedBox(width: 4),
                           _buildClearAllButton(context, ref, colorScheme),
@@ -1524,40 +1641,80 @@ class _QueueTabState extends ConsumerState<QueueTab> {
                   SliverToBoxAdapter(
                     child: Padding(
                       padding: const EdgeInsets.fromLTRB(16, 12, 16, 4),
-                      child: SingleChildScrollView(
-                        scrollDirection: Axis.horizontal,
-                        child: Row(
-                          children: [
-                            _FilterChip(
-                              label: context.l10n.historyFilterAll,
-                              count:
-                                  allHistoryItems.length +
-                                  localLibraryItems.length,
-                              isSelected: historyFilterMode == 'all',
-                              onTap: () {
-                                _animateToFilterPage(0);
-                              },
+                      child: Builder(
+                        builder: (context) {
+                          // Compute filtered counts for tab chips
+                          int filteredAllCount;
+                          int filteredAlbumCount;
+                          int filteredSingleCount;
+
+                          if (_activeFilterCount == 0 && _searchQuery.isEmpty) {
+                            filteredAllCount = allHistoryItems.length + localLibraryItems.length;
+                            filteredAlbumCount = albumCount;
+                            filteredSingleCount = singleCount;
+                          } else {
+                            // All tab: use unified items with advanced filters
+                            final allUnified = _getUnifiedItems(
+                              filterMode: 'all',
+                              historyItems: allHistoryItems,
+                              localLibraryItems: localLibraryItems,
+                              localAlbumCounts: historyStats.localAlbumCounts,
+                            );
+                            filteredAllCount = _applyAdvancedFilters(allUnified).length;
+
+                            // Albums tab: count filtered albums
+                            final filteredDlAlbums = _filterGroupedAlbums(groupedAlbums, _searchQuery);
+                            final filteredLocAlbums = _filterGroupedLocalAlbums(groupedLocalAlbums, _searchQuery);
+                            filteredAlbumCount = filteredDlAlbums.length + filteredLocAlbums.length;
+
+                            // Singles tab: use unified items for singles with advanced filters
+                            final singlesUnified = _getUnifiedItems(
+                              filterMode: 'singles',
+                              historyItems: _resolveHistoryItems(
+                                filterMode: 'singles',
+                                allHistoryItems: allHistoryItems,
+                                albumCounts: historyStats.albumCounts,
+                              ),
+                              localLibraryItems: localLibraryItems,
+                              localAlbumCounts: historyStats.localAlbumCounts,
+                            );
+                            filteredSingleCount = _applyAdvancedFilters(singlesUnified).length;
+                          }
+
+                          return SingleChildScrollView(
+                            scrollDirection: Axis.horizontal,
+                            child: Row(
+                              children: [
+                                _FilterChip(
+                                  label: context.l10n.historyFilterAll,
+                                  count: filteredAllCount,
+                                  isSelected: historyFilterMode == 'all',
+                                  onTap: () {
+                                    _animateToFilterPage(0);
+                                  },
+                                ),
+                                const SizedBox(width: 8),
+                                _FilterChip(
+                                  label: context.l10n.historyFilterAlbums,
+                                  count: filteredAlbumCount,
+                                  isSelected: historyFilterMode == 'albums',
+                                  onTap: () {
+                                    _animateToFilterPage(1);
+                                  },
+                                ),
+                                const SizedBox(width: 8),
+                                _FilterChip(
+                                  label: context.l10n.historyFilterSingles,
+                                  count: filteredSingleCount,
+                                  isSelected: historyFilterMode == 'singles',
+                                  onTap: () {
+                                    _animateToFilterPage(2);
+                                  },
+                                ),
+                              ],
                             ),
-                            const SizedBox(width: 8),
-                            _FilterChip(
-                              label: context.l10n.historyFilterAlbums,
-                              count: albumCount,
-                              isSelected: historyFilterMode == 'albums',
-                              onTap: () {
-                                _animateToFilterPage(1);
-                              },
-                            ),
-                            const SizedBox(width: 8),
-                            _FilterChip(
-                              label: context.l10n.historyFilterSingles,
-                              count: singleCount,
-                              isSelected: historyFilterMode == 'singles',
-                              onTap: () {
-                                _animateToFilterPage(2);
-                              },
-                            ),
-                          ],
-                        ),
+                          );
+                        },
                       ),
                     ),
                   ),
@@ -1778,20 +1935,18 @@ class _QueueTabState extends ConsumerState<QueueTab> {
       filterMode: filterMode,
     );
 
-    // Filter grouped albums based on search query
+    // Filter grouped albums based on search query + advanced filters
     final searchQuery = _searchQuery;
-    final filteredGroupedAlbums = searchQuery.isEmpty
-        ? groupedAlbums
-        : groupedAlbums
-              .where((album) => album.searchKey.contains(searchQuery))
-              .toList();
+    final filteredGroupedAlbums = _filterGroupedAlbums(
+      groupedAlbums,
+      searchQuery,
+    );
 
-    // Filter local library albums based on search query
-    final filteredGroupedLocalAlbums = searchQuery.isEmpty
-        ? groupedLocalAlbums
-        : groupedLocalAlbums
-              .where((album) => album.searchKey.contains(searchQuery))
-              .toList();
+    // Filter local library albums based on search query + advanced filters
+    final filteredGroupedLocalAlbums = _filterGroupedLocalAlbums(
+      groupedLocalAlbums,
+      searchQuery,
+    );
 
     // Total album count for display
     final totalAlbumCount =
@@ -2093,62 +2248,6 @@ class _QueueTabState extends ConsumerState<QueueTab> {
         foregroundColor: colorScheme.error,
       ),
     );
-  }
-
-  Widget _buildExportFailedButton(
-    BuildContext context,
-    WidgetRef ref,
-    ColorScheme colorScheme,
-  ) {
-    final queueState = ref.watch(downloadQueueProvider);
-    final failedCount = queueState.failedCount;
-
-    if (failedCount == 0) {
-      return const SizedBox.shrink();
-    }
-
-    return TextButton.icon(
-      onPressed: () => _exportFailedDownloads(context, ref),
-      icon: const Icon(Icons.file_download, size: 18),
-      label: Text(context.l10n.queueExportFailed),
-      style: TextButton.styleFrom(
-        visualDensity: VisualDensity.compact,
-        foregroundColor: colorScheme.tertiary,
-      ),
-    );
-  }
-
-  Future<void> _exportFailedDownloads(
-    BuildContext context,
-    WidgetRef ref,
-  ) async {
-    final filePath = await ref
-        .read(downloadQueueProvider.notifier)
-        .exportFailedDownloads();
-
-    if (!context.mounted) return;
-
-    if (filePath != null) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(context.l10n.queueExportFailedSuccess),
-          action: SnackBarAction(
-            label: context.l10n.queueExportFailedClear,
-            onPressed: () {
-              ref.read(downloadQueueProvider.notifier).clearFailedDownloads();
-            },
-          ),
-          duration: const Duration(seconds: 5),
-        ),
-      );
-    } else {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(context.l10n.queueExportFailedError),
-          backgroundColor: Theme.of(context).colorScheme.error,
-        ),
-      );
-    }
   }
 
   Future<void> _showClearAllDialog(
