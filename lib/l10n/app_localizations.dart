@@ -4408,6 +4408,24 @@ abstract class AppLocalizations {
   /// **'This Year'**
   String get libraryFilterDateYear;
 
+  /// Filter section - sort order
+  ///
+  /// In en, this message translates to:
+  /// **'Sort'**
+  String get libraryFilterSort;
+
+  /// Sort option - newest first
+  ///
+  /// In en, this message translates to:
+  /// **'Latest'**
+  String get libraryFilterSortLatest;
+
+  /// Sort option - oldest first
+  ///
+  /// In en, this message translates to:
+  /// **'Oldest'**
+  String get libraryFilterSortOldest;
+
   /// Badge showing number of active filters
   ///
   /// In en, this message translates to:

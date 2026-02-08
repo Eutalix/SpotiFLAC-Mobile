@@ -2,6 +2,14 @@
 
 ## [3.5.2] - 2026-02-08
 
+### Changed
+
+- Replaced date range filter with sorting options in Library tab: Latest, Oldest, A-Z, Z-A
+- Sorting applies to all views: unified items, downloaded albums, and local library albums
+- Local library items now use file modification time (`fileModTime`) for sorting instead of scan time, providing more accurate chronological ordering
+- Removed redundant manual "Export Failed Downloads" button from Library UI (auto-export setting in Settings is sufficient)
+- Library filters (quality, format, source) now correctly apply to album tabs and update tab chip counts (All/Albums/Singles)
+
 ### Fixed
 
 - Fixed local library scan crashing on Samsung One UI devices due to MediaStore URI mismatch in SAF tree traversal

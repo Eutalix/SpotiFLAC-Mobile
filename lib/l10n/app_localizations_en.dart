@@ -2435,6 +2435,15 @@ class AppLocalizationsEn extends AppLocalizations {
   String get libraryFilterDateYear => 'This Year';
 
   @override
+  String get libraryFilterSort => 'Sort';
+
+  @override
+  String get libraryFilterSortLatest => 'Latest';
+
+  @override
+  String get libraryFilterSortOldest => 'Oldest';
+
+  @override
   String libraryFilterActive(int count) {
     return '$count filter(s) active';
   }

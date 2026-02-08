@@ -1828,6 +1828,12 @@
   "@libraryFilterDateMonth": {"description": "Filter option - this month"},
   "libraryFilterDateYear": "This Year",
   "@libraryFilterDateYear": {"description": "Filter option - this year"},
+  "libraryFilterSort": "Sort",
+  "@libraryFilterSort": {"description": "Filter section - sort order"},
+  "libraryFilterSortLatest": "Latest",
+  "@libraryFilterSortLatest": {"description": "Sort option - newest first"},
+  "libraryFilterSortOldest": "Oldest",
+  "@libraryFilterSortOldest": {"description": "Sort option - oldest first"},
   "libraryFilterActive": "{count} filter(s) active",
   "@libraryFilterActive": {
     "description": "Badge showing number of active filters",

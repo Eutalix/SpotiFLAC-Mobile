@@ -81,7 +81,9 @@ class UnifiedLibraryItem {
       localCoverPath: item.coverPath, // Use extracted cover path
       filePath: item.filePath,
       quality: quality,
-      addedAt: item.scannedAt,
+      addedAt: item.fileModTime != null
+          ? DateTime.fromMillisecondsSinceEpoch(item.fileModTime!)
+          : item.scannedAt,
       source: LibraryItemSource.local,
       localItem: item,
     );
@@ -281,7 +283,7 @@ class _QueueTabState extends ConsumerState<QueueTab> {
   String? _filterSource; // null = all, 'downloaded', 'local'
   String? _filterQuality; // null = all, 'hires', 'cd', 'lossy'
   String? _filterFormat; // null = all, 'flac', 'mp3', 'm4a', 'opus', 'ogg'
-  String? _filterDateRange; // null = all, 'today', 'week', 'month', 'year'
+  String _sortMode = 'latest'; // 'latest', 'oldest', 'a-z', 'z-a'
 
   @override
   void initState() {
@@ -731,7 +733,6 @@ class _QueueTabState extends ConsumerState<QueueTab> {
     if (_filterSource != null) count++;
     if (_filterQuality != null) count++;
     if (_filterFormat != null) count++;
-    if (_filterDateRange != null) count++;
     return count;
   }
 
@@ -740,7 +741,7 @@ class _QueueTabState extends ConsumerState<QueueTab> {
       _filterSource = null;
       _filterQuality = null;
       _filterFormat = null;
-      _filterDateRange = null;
+      _sortMode = 'latest';
       _unifiedItemsCache.clear();
     });
   }
@@ -748,86 +749,66 @@ class _QueueTabState extends ConsumerState<QueueTab> {
   List<UnifiedLibraryItem> _applyAdvancedFilters(
     List<UnifiedLibraryItem> items,
   ) {
-    if (_activeFilterCount == 0) return items;
-
-    return items
-        .where((item) {
-          if (_filterSource != null) {
-            if (_filterSource == 'downloaded' &&
-                item.source != LibraryItemSource.downloaded) {
-              return false;
+    List<UnifiedLibraryItem> filtered;
+    if (_activeFilterCount == 0) {
+      filtered = items;
+    } else {
+      filtered = items
+          .where((item) {
+            if (_filterSource != null) {
+              if (_filterSource == 'downloaded' &&
+                  item.source != LibraryItemSource.downloaded) {
+                return false;
+              }
+              if (_filterSource == 'local' &&
+                  item.source != LibraryItemSource.local) {
+                return false;
+              }
             }
-            if (_filterSource == 'local' &&
-                item.source != LibraryItemSource.local) {
-              return false;
+
+            if (_filterQuality != null && item.quality != null) {
+              final quality = item.quality!.toLowerCase();
+              switch (_filterQuality) {
+                case 'hires':
+                  if (!quality.startsWith('24')) return false;
+                case 'cd':
+                  if (!quality.startsWith('16')) return false;
+                case 'lossy':
+                  if (quality.startsWith('24') || quality.startsWith('16')) {
+                    return false;
+                  }
+              }
+            } else if (_filterQuality != null && item.quality == null) {
+              if (_filterQuality != 'lossy') return false;
             }
-          }
 
-          if (_filterQuality != null && item.quality != null) {
-            final quality = item.quality!.toLowerCase();
-            switch (_filterQuality) {
-              case 'hires':
-                if (!quality.startsWith('24')) return false;
-              case 'cd':
-                if (!quality.startsWith('16')) return false;
-              case 'lossy':
-                if (quality.startsWith('24') || quality.startsWith('16')) {
-                  return false;
-                }
+            if (_filterFormat != null) {
+              final ext = item.filePath.split('.').last.toLowerCase();
+              if (ext != _filterFormat) return false;
             }
-          } else if (_filterQuality != null && item.quality == null) {
-            if (_filterQuality != 'lossy') return false;
-          }
 
-          if (_filterFormat != null) {
-            final ext = item.filePath.split('.').last.toLowerCase();
-            if (ext != _filterFormat) return false;
-          }
+            return true;
+          })
+          .toList(growable: false);
+    }
 
-          if (_filterDateRange != null) {
-            final now = DateTime.now();
-            final itemDate = item.addedAt;
-            switch (_filterDateRange) {
-              case 'today':
-                if (itemDate.year != now.year ||
-                    itemDate.month != now.month ||
-                    itemDate.day != now.day) {
-                  return false;
-                }
-              case 'week':
-                final weekAgo = now.subtract(const Duration(days: 7));
-                if (itemDate.isBefore(weekAgo)) return false;
-              case 'month':
-                final monthAgo = DateTime(now.year, now.month - 1, now.day);
-                if (itemDate.isBefore(monthAgo)) return false;
-              case 'year':
-                if (itemDate.year != now.year) return false;
-            }
-          }
-
-          return true;
-        })
-        .toList(growable: false);
+    // Apply sorting
+    return _applySorting(filtered);
   }
 
-  /// Check if a date passes the current date range filter
-  bool _passesDateFilter(DateTime date) {
-    if (_filterDateRange == null) return true;
-    final now = DateTime.now();
-    switch (_filterDateRange) {
-      case 'today':
-        return date.year == now.year &&
-            date.month == now.month &&
-            date.day == now.day;
-      case 'week':
-        return !date.isBefore(now.subtract(const Duration(days: 7)));
-      case 'month':
-        return !date.isBefore(DateTime(now.year, now.month - 1, now.day));
-      case 'year':
-        return date.year == now.year;
-      default:
-        return true;
+  /// Apply current sort mode to a list of unified items
+  List<UnifiedLibraryItem> _applySorting(List<UnifiedLibraryItem> items) {
+    if (_sortMode == 'latest') return items; // Already sorted newest first from _getUnifiedItems
+    final sorted = List<UnifiedLibraryItem>.of(items);
+    switch (_sortMode) {
+      case 'oldest':
+        sorted.sort((a, b) => a.addedAt.compareTo(b.addedAt));
+      case 'a-z':
+        sorted.sort((a, b) => a.trackName.toLowerCase().compareTo(b.trackName.toLowerCase()));
+      case 'z-a':
+        sorted.sort((a, b) => b.trackName.toLowerCase().compareTo(a.trackName.toLowerCase()));
     }
+    return sorted;
   }
 
   /// Check if a quality string passes the current quality filter
@@ -858,7 +839,7 @@ class _QueueTabState extends ConsumerState<QueueTab> {
     List<_GroupedAlbum> albums,
     String searchQuery,
   ) {
-    if (_activeFilterCount == 0 && searchQuery.isEmpty) return albums;
+    if (_activeFilterCount == 0 && searchQuery.isEmpty && _sortMode == 'latest') return albums;
 
     // Source filter: if filtering local only, hide all download albums
     if (_filterSource == 'local') return const [];
@@ -870,11 +851,8 @@ class _QueueTabState extends ConsumerState<QueueTab> {
       }
 
       // Filter tracks within the album by advanced filters
-      if (_filterQuality != null ||
-          _filterFormat != null ||
-          _filterDateRange != null) {
+      if (_filterQuality != null || _filterFormat != null) {
         final filteredTracks = album.tracks.where((track) {
-          if (!_passesDateFilter(track.downloadedAt)) return false;
           if (!_passesQualityFilter(track.quality)) return false;
           if (!_passesFormatFilter(track.filePath)) return false;
           return true;
@@ -885,6 +863,19 @@ class _QueueTabState extends ConsumerState<QueueTab> {
 
       result.add(album);
     }
+
+    // Apply sorting to albums
+    switch (_sortMode) {
+      case 'oldest':
+        result.sort((a, b) => a.latestDownload.compareTo(b.latestDownload));
+      case 'a-z':
+        result.sort((a, b) => a.albumName.toLowerCase().compareTo(b.albumName.toLowerCase()));
+      case 'z-a':
+        result.sort((a, b) => b.albumName.toLowerCase().compareTo(a.albumName.toLowerCase()));
+      default: // 'latest' - already sorted
+        break;
+    }
+
     return result;
   }
 
@@ -893,7 +884,7 @@ class _QueueTabState extends ConsumerState<QueueTab> {
     List<_GroupedLocalAlbum> albums,
     String searchQuery,
   ) {
-    if (_activeFilterCount == 0 && searchQuery.isEmpty) return albums;
+    if (_activeFilterCount == 0 && searchQuery.isEmpty && _sortMode == 'latest') return albums;
 
     // Source filter: if filtering downloaded only, hide all local albums
     if (_filterSource == 'downloaded') return const [];
@@ -905,12 +896,8 @@ class _QueueTabState extends ConsumerState<QueueTab> {
       }
 
       // Filter tracks within the album by advanced filters
-      if (_filterQuality != null ||
-          _filterFormat != null ||
-          _filterDateRange != null) {
+      if (_filterQuality != null || _filterFormat != null) {
         final filteredTracks = album.tracks.where((track) {
-          if (!_passesDateFilter(track.scannedAt)) return false;
-          // Build quality string for local items
           String? quality;
           if (track.bitDepth != null && track.sampleRate != null) {
             quality =
@@ -926,6 +913,19 @@ class _QueueTabState extends ConsumerState<QueueTab> {
 
       result.add(album);
     }
+
+    // Apply sorting to local albums
+    switch (_sortMode) {
+      case 'oldest':
+        result.sort((a, b) => a.latestScanned.compareTo(b.latestScanned));
+      case 'a-z':
+        result.sort((a, b) => a.albumName.toLowerCase().compareTo(b.albumName.toLowerCase()));
+      case 'z-a':
+        result.sort((a, b) => b.albumName.toLowerCase().compareTo(a.albumName.toLowerCase()));
+      default: // 'latest' - already sorted
+        break;
+    }
+
     return result;
   }
 
@@ -950,7 +950,7 @@ class _QueueTabState extends ConsumerState<QueueTab> {
     String? tempSource = _filterSource;
     String? tempQuality = _filterQuality;
     String? tempFormat = _filterFormat;
-    String? tempDateRange = _filterDateRange;
+    String tempSortMode = _sortMode;
 
     showModalBottomSheet(
       context: context,
@@ -995,7 +995,7 @@ class _QueueTabState extends ConsumerState<QueueTab> {
                             tempSource = null;
                             tempQuality = null;
                             tempFormat = null;
-                            tempDateRange = null;
+                            tempSortMode = 'latest';
                           });
                         },
                         child: Text(context.l10n.libraryFilterReset),
@@ -1102,7 +1102,7 @@ class _QueueTabState extends ConsumerState<QueueTab> {
                   const SizedBox(height: 16),
 
                   Text(
-                    context.l10n.libraryFilterDate,
+                    context.l10n.libraryFilterSort,
                     style: Theme.of(context).textTheme.titleSmall?.copyWith(
                       fontWeight: FontWeight.w600,
                     ),
@@ -1112,34 +1112,28 @@ class _QueueTabState extends ConsumerState<QueueTab> {
                     spacing: 8,
                     children: [
                       FilterChip(
-                        label: Text(context.l10n.libraryFilterAll),
-                        selected: tempDateRange == null,
+                        label: Text(context.l10n.libraryFilterSortLatest),
+                        selected: tempSortMode == 'latest',
                         onSelected: (_) =>
-                            setSheetState(() => tempDateRange = null),
+                            setSheetState(() => tempSortMode = 'latest'),
                       ),
                       FilterChip(
-                        label: Text(context.l10n.libraryFilterDateToday),
-                        selected: tempDateRange == 'today',
+                        label: Text(context.l10n.libraryFilterSortOldest),
+                        selected: tempSortMode == 'oldest',
                         onSelected: (_) =>
-                            setSheetState(() => tempDateRange = 'today'),
+                            setSheetState(() => tempSortMode = 'oldest'),
                       ),
                       FilterChip(
-                        label: Text(context.l10n.libraryFilterDateWeek),
-                        selected: tempDateRange == 'week',
+                        label: const Text('A-Z'),
+                        selected: tempSortMode == 'a-z',
                         onSelected: (_) =>
-                            setSheetState(() => tempDateRange = 'week'),
+                            setSheetState(() => tempSortMode = 'a-z'),
                       ),
                       FilterChip(
-                        label: Text(context.l10n.libraryFilterDateMonth),
-                        selected: tempDateRange == 'month',
+                        label: const Text('Z-A'),
+                        selected: tempSortMode == 'z-a',
                         onSelected: (_) =>
-                            setSheetState(() => tempDateRange = 'month'),
-                      ),
-                      FilterChip(
-                        label: Text(context.l10n.libraryFilterDateYear),
-                        selected: tempDateRange == 'year',
-                        onSelected: (_) =>
-                            setSheetState(() => tempDateRange = 'year'),
+                            setSheetState(() => tempSortMode = 'z-a'),
                       ),
                     ],
                   ),
@@ -1153,7 +1147,7 @@ class _QueueTabState extends ConsumerState<QueueTab> {
                           _filterSource = tempSource;
                           _filterQuality = tempQuality;
                           _filterFormat = tempFormat;
-                          _filterDateRange = tempDateRange;
+                          _sortMode = tempSortMode;
                           _unifiedItemsCache.clear();
                         });
                         Navigator.pop(context);
@@ -1967,7 +1961,7 @@ class _QueueTabState extends ConsumerState<QueueTab> {
 
     return CustomScrollView(
       slivers: [
-        if (totalTrackCount > 0 && queueItems.isEmpty && filterMode != 'albums')
+        if (totalTrackCount > 0 && queueItems.isEmpty && filterMode == 'all')
           SliverToBoxAdapter(
             child: Padding(
               padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
@@ -2022,11 +2016,69 @@ class _QueueTabState extends ConsumerState<QueueTab> {
           SliverToBoxAdapter(
             child: Padding(
               padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
-              child: Text(
-                '$totalAlbumCount ${totalAlbumCount == 1 ? 'album' : 'albums'}',
-                style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                  color: colorScheme.onSurfaceVariant,
-                ),
+              child: Row(
+                children: [
+                  Text(
+                    '$totalAlbumCount ${totalAlbumCount == 1 ? 'album' : 'albums'}',
+                    style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                      color: colorScheme.onSurfaceVariant,
+                    ),
+                  ),
+                  const Spacer(),
+                  GestureDetector(
+                    onLongPress: _activeFilterCount > 0
+                        ? _resetFilters
+                        : null,
+                    child: TextButton.icon(
+                      onPressed: () =>
+                          _showFilterSheet(context, unifiedItems),
+                      icon: Badge(
+                        isLabelVisible: _activeFilterCount > 0,
+                        label: Text('$_activeFilterCount'),
+                        child: const Icon(Icons.filter_list, size: 18),
+                      ),
+                      label: Text(context.l10n.libraryFilterTitle),
+                      style: TextButton.styleFrom(
+                        visualDensity: VisualDensity.compact,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+
+        // Albums empty state with filter button
+        if (filteredGroupedAlbums.isEmpty &&
+            filteredGroupedLocalAlbums.isEmpty &&
+            queueItems.isEmpty &&
+            filterMode == 'albums' &&
+            (historyItems.isNotEmpty || localLibraryItems.isNotEmpty))
+          SliverToBoxAdapter(
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
+              child: Row(
+                children: [
+                  const Spacer(),
+                  GestureDetector(
+                    onLongPress: _activeFilterCount > 0
+                        ? _resetFilters
+                        : null,
+                    child: TextButton.icon(
+                      onPressed: () =>
+                          _showFilterSheet(context, unifiedItems),
+                      icon: Badge(
+                        isLabelVisible: _activeFilterCount > 0,
+                        label: Text('$_activeFilterCount'),
+                        child: const Icon(Icons.filter_list, size: 18),
+                      ),
+                      label: Text(context.l10n.libraryFilterTitle),
+                      style: TextButton.styleFrom(
+                        visualDensity: VisualDensity.compact,
+                      ),
+                    ),
+                  ),
+                ],
               ),
             ),
           ),
@@ -2153,6 +2205,53 @@ class _QueueTabState extends ConsumerState<QueueTab> {
                 ),
 
         // Singles filter - show unified items (downloaded + local singles)
+        if (filterMode == 'singles' && queueItems.isEmpty)
+          SliverToBoxAdapter(
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
+              child: Row(
+                children: [
+                  Text(
+                    '$totalTrackCount ${totalTrackCount == 1 ? 'track' : 'tracks'}',
+                    style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                      color: colorScheme.onSurfaceVariant,
+                    ),
+                  ),
+                  const Spacer(),
+                  if (!_isSelectionMode)
+                    GestureDetector(
+                      onLongPress: _activeFilterCount > 0
+                          ? _resetFilters
+                          : null,
+                      child: TextButton.icon(
+                        onPressed: () =>
+                            _showFilterSheet(context, unifiedItems),
+                        icon: Badge(
+                          isLabelVisible: _activeFilterCount > 0,
+                          label: Text('$_activeFilterCount'),
+                          child: const Icon(Icons.filter_list, size: 18),
+                        ),
+                        label: Text(context.l10n.libraryFilterTitle),
+                        style: TextButton.styleFrom(
+                          visualDensity: VisualDensity.compact,
+                        ),
+                      ),
+                    ),
+                  if (!_isSelectionMode && filteredUnifiedItems.isNotEmpty)
+                    TextButton.icon(
+                      onPressed: () =>
+                          _enterSelectionMode(filteredUnifiedItems.first.id),
+                      icon: const Icon(Icons.checklist, size: 18),
+                      label: Text(context.l10n.actionSelect),
+                      style: TextButton.styleFrom(
+                        visualDensity: VisualDensity.compact,
+                      ),
+                    ),
+                ],
+              ),
+            ),
+          ),
+
         if (filteredUnifiedItems.isNotEmpty && filterMode == 'singles')
           historyViewMode == 'grid'
               ? SliverPadding(
