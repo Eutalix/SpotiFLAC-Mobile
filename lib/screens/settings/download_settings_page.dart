@@ -22,7 +22,7 @@ class DownloadSettingsPage extends ConsumerStatefulWidget {
 }
 
 class _DownloadSettingsPageState extends ConsumerState<DownloadSettingsPage> {
-  static const _builtInServices = ['tidal', 'qobuz', 'amazon'];
+  static const _builtInServices = ['tidal', 'qobuz'];
   int _androidSdkVersion = 0;
   bool _hasAllFilesAccess = false;
 
@@ -248,7 +248,7 @@ class _DownloadSettingsPageState extends ConsumerState<DownloadSettingsPage> {
                           const SizedBox(width: 8),
                           Expanded(
                             child: Text(
-                              'Select Tidal, Qobuz, or Amazon above to configure quality',
+                              'Select Tidal or Qobuz above to configure quality',
                               style: Theme.of(context).textTheme.bodySmall
                                   ?.copyWith(
                                     color: colorScheme.onSurfaceVariant,
@@ -1354,7 +1354,6 @@ class _ServiceSelector extends ConsumerWidget {
     final isExtensionService = ![
       'tidal',
       'qobuz',
-      'amazon',
     ].contains(currentService);
     final isCurrentExtensionEnabled = isExtensionService
         ? extensionProviders.any((e) => e.id == currentService)
@@ -1380,15 +1379,6 @@ class _ServiceSelector extends ConsumerWidget {
                 label: 'Qobuz',
                 isSelected: effectiveService == 'qobuz',
                 onTap: () => onChanged('qobuz'),
-              ),
-              const SizedBox(width: 8),
-              _ServiceChip(
-                icon: Icons.shopping_bag,
-                label: 'Amazon',
-                isSelected: effectiveService == 'amazon',
-                isDisabled: true,
-                disabledReason: 'Coming soon',
-                onTap: () {},
               ),
             ],
           ),
@@ -1425,15 +1415,11 @@ class _ServiceChip extends StatelessWidget {
   final String label;
   final bool isSelected;
   final VoidCallback onTap;
-  final bool isDisabled;
-  final String? disabledReason;
   const _ServiceChip({
     required this.icon,
     required this.label,
     required this.isSelected,
     required this.onTap,
-    this.isDisabled = false,
-    this.disabledReason,
   });
 
   @override
@@ -1448,66 +1434,39 @@ class _ServiceChip extends StatelessWidget {
           )
         : colorScheme.surfaceContainerHigh;
 
-    final disabledColor = isDark
-        ? Color.alphaBlend(
-            Colors.white.withValues(alpha: 0.02),
-            colorScheme.surface,
-          )
-        : colorScheme.surfaceContainerLow;
-
     return Expanded(
-      child: Tooltip(
-        message: isDisabled && disabledReason != null ? disabledReason! : '',
-        child: Material(
-          color: isDisabled
-              ? disabledColor
-              : isSelected
-              ? colorScheme.primaryContainer
-              : unselectedColor,
+      child: Material(
+        color: isSelected
+            ? colorScheme.primaryContainer
+            : unselectedColor,
+        borderRadius: BorderRadius.circular(12),
+        child: InkWell(
+          onTap: onTap,
           borderRadius: BorderRadius.circular(12),
-          child: InkWell(
-            onTap: isDisabled ? null : onTap,
-            borderRadius: BorderRadius.circular(12),
-            child: Padding(
-              padding: const EdgeInsets.symmetric(vertical: 14),
-              child: Column(
-                children: [
-                  Icon(
-                    icon,
-                    color: isDisabled
-                        ? colorScheme.onSurface.withValues(alpha: 0.38)
-                        : isSelected
+          child: Padding(
+            padding: const EdgeInsets.symmetric(vertical: 14),
+            child: Column(
+              children: [
+                Icon(
+                  icon,
+                  color: isSelected
+                      ? colorScheme.onPrimaryContainer
+                      : colorScheme.onSurfaceVariant,
+                ),
+                const SizedBox(height: 6),
+                Text(
+                  label,
+                  style: TextStyle(
+                    fontSize: 12,
+                    fontWeight: isSelected
+                        ? FontWeight.w600
+                        : FontWeight.normal,
+                    color: isSelected
                         ? colorScheme.onPrimaryContainer
                         : colorScheme.onSurfaceVariant,
                   ),
-                  const SizedBox(height: 6),
-                  Text(
-                    label,
-                    style: TextStyle(
-                      fontSize: 12,
-                      fontWeight: isSelected && !isDisabled
-                          ? FontWeight.w600
-                          : FontWeight.normal,
-                      color: isDisabled
-                          ? colorScheme.onSurface.withValues(alpha: 0.38)
-                          : isSelected
-                          ? colorScheme.onPrimaryContainer
-                          : colorScheme.onSurfaceVariant,
-                    ),
-                  ),
-                  if (isDisabled && disabledReason != null)
-                    Padding(
-                      padding: const EdgeInsets.only(top: 2),
-                      child: Text(
-                        disabledReason!,
-                        style: TextStyle(
-                          fontSize: 9,
-                          color: colorScheme.onSurface.withValues(alpha: 0.38),
-                        ),
-                      ),
-                    ),
-                ],
-              ),
+                ),
+              ],
             ),
           ),
         ),

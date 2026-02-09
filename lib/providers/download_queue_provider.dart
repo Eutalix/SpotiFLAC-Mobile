@@ -1253,6 +1253,12 @@ class DownloadQueueNotifier extends Notifier<DownloadQueueState> {
     return match?.group(1);
   }
 
+  static final _isrcRegex = RegExp(r'^[A-Z]{2}[A-Z0-9]{3}\d{2}\d{5}$');
+
+  bool _isValidISRC(String value) {
+    return _isrcRegex.hasMatch(value.toUpperCase());
+  }
+
   void updateSettings(AppSettings settings) {
     final concurrentDownloads = settings.concurrentDownloads.clamp(1, 5);
     state = state.copyWith(
@@ -2607,7 +2613,8 @@ class DownloadQueueNotifier extends Notifier<DownloadQueueState> {
 
       if (deezerTrackId == null &&
           trackToDownload.isrc != null &&
-          trackToDownload.isrc!.isNotEmpty) {
+          trackToDownload.isrc!.isNotEmpty &&
+          _isValidISRC(trackToDownload.isrc!)) {
         try {
           _log.d('No Deezer ID, searching by ISRC: ${trackToDownload.isrc}');
           final deezerResult = await PlatformBridge.searchDeezerByISRC(
@@ -2620,6 +2627,75 @@ class DownloadQueueNotifier extends Notifier<DownloadQueueState> {
           }
         } catch (e) {
           _log.w('Failed to search Deezer by ISRC: $e');
+        }
+      }
+
+      // Fallback: Use SongLink to convert Spotify ID to Deezer ID
+      if (deezerTrackId == null &&
+          trackToDownload.id.isNotEmpty &&
+          !trackToDownload.id.startsWith('deezer:') &&
+          !trackToDownload.id.startsWith('extension:')) {
+        try {
+          // Extract clean Spotify ID (remove spotify: prefix if present)
+          String spotifyId = trackToDownload.id;
+          if (spotifyId.startsWith('spotify:track:')) {
+            spotifyId = spotifyId.split(':').last;
+          }
+          _log.d('No Deezer ID, converting from Spotify via SongLink: $spotifyId');
+          final deezerData = await PlatformBridge.convertSpotifyToDeezer('track', spotifyId);
+          // Response is TrackResponse: {"track": {"spotify_id": "deezer:XXXXX", ...}}
+          final trackData = deezerData['track'];
+          if (trackData is Map<String, dynamic>) {
+            final rawId = trackData['spotify_id'] as String?;
+            if (rawId != null && rawId.startsWith('deezer:')) {
+              deezerTrackId = rawId.split(':')[1];
+              _log.d('Found Deezer track ID via SongLink: $deezerTrackId');
+            } else if (deezerData['id'] != null) {
+              deezerTrackId = deezerData['id'].toString();
+              _log.d('Found Deezer track ID via SongLink (legacy): $deezerTrackId');
+            }
+
+            // Enrich track metadata from Deezer response (release_date, isrc, etc.)
+            final deezerReleaseDate = _normalizeOptionalString(trackData['release_date'] as String?);
+            final deezerIsrc = _normalizeOptionalString(trackData['isrc'] as String?);
+            final deezerTrackNum = trackData['track_number'] as int?;
+            final deezerDiscNum = trackData['disc_number'] as int?;
+
+            final needsEnrich =
+                (trackToDownload.releaseDate == null && deezerReleaseDate != null) ||
+                (trackToDownload.isrc == null && deezerIsrc != null) ||
+                (!_isValidISRC(trackToDownload.isrc ?? '') && deezerIsrc != null) ||
+                (trackToDownload.trackNumber == null && deezerTrackNum != null) ||
+                (trackToDownload.discNumber == null && deezerDiscNum != null);
+
+            if (needsEnrich) {
+              trackToDownload = Track(
+                id: trackToDownload.id,
+                name: trackToDownload.name,
+                artistName: trackToDownload.artistName,
+                albumName: trackToDownload.albumName,
+                albumArtist: trackToDownload.albumArtist,
+                coverUrl: trackToDownload.coverUrl,
+                duration: trackToDownload.duration,
+                isrc: (deezerIsrc != null && _isValidISRC(deezerIsrc))
+                    ? deezerIsrc
+                    : trackToDownload.isrc,
+                trackNumber: trackToDownload.trackNumber ?? deezerTrackNum,
+                discNumber: trackToDownload.discNumber ?? deezerDiscNum,
+                releaseDate: trackToDownload.releaseDate ?? deezerReleaseDate,
+                deezerId: deezerTrackId,
+                availability: trackToDownload.availability,
+                albumType: trackToDownload.albumType,
+                source: trackToDownload.source,
+              );
+              _log.d('Enriched track from Deezer - date: ${trackToDownload.releaseDate}, ISRC: ${trackToDownload.isrc}, track: ${trackToDownload.trackNumber}, disc: ${trackToDownload.discNumber}');
+            }
+          } else if (deezerData['id'] != null) {
+            deezerTrackId = deezerData['id'].toString();
+            _log.d('Found Deezer track ID via SongLink (flat): $deezerTrackId');
+          }
+        } catch (e) {
+          _log.w('Failed to convert Spotify to Deezer via SongLink: $e');
         }
       }
 
@@ -3305,6 +3381,15 @@ class DownloadQueueNotifier extends Notifier<DownloadQueueState> {
               progress: 0.95,
             );
 
+            final finalTrack = _buildTrackForMetadataEmbedding(
+              trackToDownload,
+              result,
+              normalizedAlbumArtist,
+            );
+            final backendGenre = result['genre'] as String?;
+            final backendLabel = result['label'] as String?;
+            final backendCopyright = result['copyright'] as String?;
+
             final isContentUriPath = isContentUri(filePath);
             if (isContentUriPath && effectiveSafMode) {
               // SAF mode: copy to temp, embed, write back
@@ -3314,16 +3399,18 @@ class DownloadQueueNotifier extends Notifier<DownloadQueueState> {
                   if (isMp3File) {
                     await _embedMetadataToMp3(
                       tempPath,
-                      trackToDownload,
-                      genre: genre,
-                      label: label,
+                      finalTrack,
+                      genre: backendGenre ?? genre,
+                      label: backendLabel ?? label,
+                      copyright: backendCopyright,
                     );
                   } else {
                     await _embedMetadataToOpus(
                       tempPath,
-                      trackToDownload,
-                      genre: genre,
-                      label: label,
+                      finalTrack,
+                      genre: backendGenre ?? genre,
+                      label: backendLabel ?? label,
+                      copyright: backendCopyright,
                     );
                   }
                   // Write back to SAF
@@ -3360,16 +3447,18 @@ class DownloadQueueNotifier extends Notifier<DownloadQueueState> {
                 if (isMp3File) {
                   await _embedMetadataToMp3(
                     filePath,
-                    trackToDownload,
-                    genre: genre,
-                    label: label,
+                    finalTrack,
+                    genre: backendGenre ?? genre,
+                    label: backendLabel ?? label,
+                    copyright: backendCopyright,
                   );
                 } else {
                   await _embedMetadataToOpus(
                     filePath,
-                    trackToDownload,
-                    genre: genre,
-                    label: label,
+                    finalTrack,
+                    genre: backendGenre ?? genre,
+                    label: backendLabel ?? label,
+                    copyright: backendCopyright,
                   );
                 }
                 _log.d('YouTube metadata embedding completed');

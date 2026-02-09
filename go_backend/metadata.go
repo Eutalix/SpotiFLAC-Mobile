@@ -29,6 +29,8 @@ type Metadata struct {
 	Genre       string
 	Label       string
 	Copyright   string
+	Composer    string
+	Comment     string
 }
 
 func EmbedMetadata(filePath string, metadata Metadata, coverPath string) error {
@@ -96,6 +98,14 @@ func EmbedMetadata(filePath string, metadata Metadata, coverPath string) error {
 
 	if metadata.Copyright != "" {
 		setComment(cmt, "COPYRIGHT", metadata.Copyright)
+	}
+
+	if metadata.Composer != "" {
+		setComment(cmt, "COMPOSER", metadata.Composer)
+	}
+
+	if metadata.Comment != "" {
+		setComment(cmt, "COMMENT", metadata.Comment)
 	}
 
 	cmtBlock := cmt.Marshal()
@@ -206,6 +216,14 @@ func EmbedMetadataWithCoverData(filePath string, metadata Metadata, coverData []
 		setComment(cmt, "COPYRIGHT", metadata.Copyright)
 	}
 
+	if metadata.Composer != "" {
+		setComment(cmt, "COMPOSER", metadata.Composer)
+	}
+
+	if metadata.Comment != "" {
+		setComment(cmt, "COMMENT", metadata.Comment)
+	}
+
 	cmtBlock := cmt.Marshal()
 	if cmtIdx >= 0 {
 		f.Meta[cmtIdx] = &cmtBlock
@@ -291,6 +309,12 @@ func ReadMetadata(filePath string) (*Metadata, error) {
 			if metadata.Date == "" {
 				metadata.Date = getComment(cmt, "YEAR")
 			}
+
+			metadata.Genre = getComment(cmt, "GENRE")
+			metadata.Label = getComment(cmt, "ORGANIZATION")
+			metadata.Copyright = getComment(cmt, "COPYRIGHT")
+			metadata.Composer = getComment(cmt, "COMPOSER")
+			metadata.Comment = getComment(cmt, "COMMENT")
 
 			break
 		}

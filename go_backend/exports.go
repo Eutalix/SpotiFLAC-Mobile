@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"os"
 	"strings"
 	"time"
 
@@ -556,34 +557,106 @@ func CleanupConnections() {
 }
 
 func ReadFileMetadata(filePath string) (string, error) {
-	metadata, err := ReadMetadata(filePath)
-	if err != nil {
-		return "", fmt.Errorf("failed to read metadata: %w", err)
-	}
-
-	quality, qualityErr := GetAudioQuality(filePath)
-
-	duration := 0
-	if qualityErr == nil && quality.SampleRate > 0 && quality.TotalSamples > 0 {
-		duration = int(quality.TotalSamples / int64(quality.SampleRate))
-	}
+	lower := strings.ToLower(filePath)
+	isFlac := strings.HasSuffix(lower, ".flac")
+	isMp3 := strings.HasSuffix(lower, ".mp3")
+	isOgg := strings.HasSuffix(lower, ".opus") || strings.HasSuffix(lower, ".ogg")
 
 	result := map[string]interface{}{
-		"title":        metadata.Title,
-		"artist":       metadata.Artist,
-		"album":        metadata.Album,
-		"album_artist": metadata.AlbumArtist,
-		"date":         metadata.Date,
-		"track_number": metadata.TrackNumber,
-		"disc_number":  metadata.DiscNumber,
-		"isrc":         metadata.ISRC,
-		"lyrics":       metadata.Lyrics,
-		"duration":     duration,
+		"title":        "",
+		"artist":       "",
+		"album":        "",
+		"album_artist": "",
+		"date":         "",
+		"track_number": 0,
+		"disc_number":  0,
+		"isrc":         "",
+		"lyrics":       "",
+		"genre":        "",
+		"label":        "",
+		"copyright":    "",
+		"composer":     "",
+		"comment":      "",
+		"duration":     0,
 	}
 
-	if qualityErr == nil {
-		result["bit_depth"] = quality.BitDepth
-		result["sample_rate"] = quality.SampleRate
+	if isFlac {
+		metadata, err := ReadMetadata(filePath)
+		if err != nil {
+			return "", fmt.Errorf("failed to read metadata: %w", err)
+		}
+		result["title"] = metadata.Title
+		result["artist"] = metadata.Artist
+		result["album"] = metadata.Album
+		result["album_artist"] = metadata.AlbumArtist
+		result["date"] = metadata.Date
+		result["track_number"] = metadata.TrackNumber
+		result["disc_number"] = metadata.DiscNumber
+		result["isrc"] = metadata.ISRC
+		result["lyrics"] = metadata.Lyrics
+		result["genre"] = metadata.Genre
+		result["label"] = metadata.Label
+		result["copyright"] = metadata.Copyright
+		result["composer"] = metadata.Composer
+		result["comment"] = metadata.Comment
+
+		quality, qualityErr := GetAudioQuality(filePath)
+		if qualityErr == nil {
+			result["bit_depth"] = quality.BitDepth
+			result["sample_rate"] = quality.SampleRate
+			if quality.SampleRate > 0 && quality.TotalSamples > 0 {
+				result["duration"] = int(quality.TotalSamples / int64(quality.SampleRate))
+			}
+		}
+	} else if isMp3 {
+		meta, err := ReadID3Tags(filePath)
+		if err == nil && meta != nil {
+			result["title"] = meta.Title
+			result["artist"] = meta.Artist
+			result["album"] = meta.Album
+			result["album_artist"] = meta.AlbumArtist
+			result["date"] = meta.Date
+			if meta.Date == "" {
+				result["date"] = meta.Year
+			}
+			result["track_number"] = meta.TrackNumber
+			result["disc_number"] = meta.DiscNumber
+			result["isrc"] = meta.ISRC
+			result["genre"] = meta.Genre
+			result["composer"] = meta.Composer
+			result["comment"] = meta.Comment
+		}
+		quality, qualityErr := GetMP3Quality(filePath)
+		if qualityErr == nil {
+			result["bit_depth"] = quality.BitDepth
+			result["sample_rate"] = quality.SampleRate
+			result["duration"] = quality.Duration
+		}
+	} else if isOgg {
+		meta, err := ReadOggVorbisComments(filePath)
+		if err == nil && meta != nil {
+			result["title"] = meta.Title
+			result["artist"] = meta.Artist
+			result["album"] = meta.Album
+			result["album_artist"] = meta.AlbumArtist
+			result["date"] = meta.Date
+			if meta.Date == "" {
+				result["date"] = meta.Year
+			}
+			result["track_number"] = meta.TrackNumber
+			result["disc_number"] = meta.DiscNumber
+			result["isrc"] = meta.ISRC
+			result["genre"] = meta.Genre
+			result["composer"] = meta.Composer
+			result["comment"] = meta.Comment
+		}
+		quality, qualityErr := GetOggQuality(filePath)
+		if qualityErr == nil {
+			result["sample_rate"] = quality.SampleRate
+			result["duration"] = quality.Duration
+		}
+	} else {
+		return "", fmt.Errorf("unsupported file format: %s", filePath)
 	}
 
 	jsonBytes, err := json.Marshal(result)
@@ -591,6 +664,66 @@ func ReadFileMetadata(filePath string) (string, error) {
 		return "", err
 	}
 
+	return string(jsonBytes), nil
+}
+
+// EditFileMetadata writes metadata to an audio file.
+// For FLAC files, uses native Go FLAC library.
+// For MP3/Opus, returns the metadata map so Dart can use FFmpeg.
+func EditFileMetadata(filePath, metadataJSON string) (string, error) {
+	var fields map[string]string
+	if err := json.Unmarshal([]byte(metadataJSON), &fields); err != nil {
+		return "", fmt.Errorf("invalid metadata JSON: %w", err)
+	}
+
+	lower := strings.ToLower(filePath)
+	isFlac := strings.HasSuffix(lower, ".flac")
+
+	if isFlac {
+		trackNum := 0
+		discNum := 0
+		if v, ok := fields["track_number"]; ok && v != "" {
+			fmt.Sscanf(v, "%d", &trackNum)
+		}
+		if v, ok := fields["disc_number"]; ok && v != "" {
+			fmt.Sscanf(v, "%d", &discNum)
+		}
+
+		meta := Metadata{
+			Title:       fields["title"],
+			Artist:      fields["artist"],
+			Album:       fields["album"],
+			AlbumArtist: fields["album_artist"],
+			Date:        fields["date"],
+			TrackNumber: trackNum,
+			DiscNumber:  discNum,
+			ISRC:        fields["isrc"],
+			Genre:       fields["genre"],
+			Label:       fields["label"],
+			Copyright:   fields["copyright"],
+			Composer:    fields["composer"],
+			Comment:     fields["comment"],
+		}
+
+		if err := EmbedMetadata(filePath, meta, ""); err != nil {
+			return "", fmt.Errorf("failed to write FLAC metadata: %w", err)
+		}
+
+		resp := map[string]any{
+			"success": true,
+			"method":  "native",
+		}
+		jsonBytes, _ := json.Marshal(resp)
+		return string(jsonBytes), nil
+	}
+
+	// MP3/Opus: return metadata for Dart-side FFmpeg embedding
+	resp := map[string]any{
+		"success": true,
+		"method":  "ffmpeg",
+		"fields":  fields,
+	}
+	jsonBytes, _ := json.Marshal(resp)
 	return string(jsonBytes), nil
 }
 
@@ -1147,6 +1280,386 @@ func IsYouTubeURLExport(urlStr string) bool {
 // ExtractYouTubeVideoIDExport extracts video ID from YouTube URL (exported for Flutter)
 func ExtractYouTubeVideoIDExport(urlStr string) (string, error) {
 	return ExtractYouTubeVideoID(urlStr)
+}
+
+// ==================== COVER & LYRICS SAVE ====================
+
+// DownloadCoverToFile downloads cover art from URL and saves to outputPath.
+// If maxQuality is true, upgrades to highest available resolution.
+func DownloadCoverToFile(coverURL string, outputPath string, maxQuality bool) error {
+	if coverURL == "" {
+		return fmt.Errorf("no cover URL provided")
+	}
+
+	data, err := downloadCoverToMemory(coverURL, maxQuality)
+	if err != nil {
+		return fmt.Errorf("failed to download cover: %w", err)
+	}
+
+	if err := os.WriteFile(outputPath, data, 0644); err != nil {
+		return fmt.Errorf("failed to write cover file: %w", err)
+	}
+
+	GoLog("[Cover] Saved cover art to: %s (%d KB)\n", outputPath, len(data)/1024)
+	return nil
+}
+
+// ExtractCoverToFile extracts embedded cover art from audio file and saves to outputPath.
+func ExtractCoverToFile(audioPath string, outputPath string) error {
+	lower := strings.ToLower(audioPath)
+
+	var coverData []byte
+	var err error
+
+	if strings.HasSuffix(lower, ".flac") {
+		coverData, err = ExtractCoverArt(audioPath)
+	} else if strings.HasSuffix(lower, ".mp3") {
+		coverData, _, err = extractMP3CoverArt(audioPath)
+	} else if strings.HasSuffix(lower, ".opus") || strings.HasSuffix(lower, ".ogg") {
+		coverData, _, err = extractOggCoverArt(audioPath)
+	} else {
+		return fmt.Errorf("unsupported audio format for cover extraction")
+	}
+
+	if err != nil {
+		return fmt.Errorf("failed to extract cover: %w", err)
+	}
+
+	if err := os.WriteFile(outputPath, coverData, 0644); err != nil {
+		return fmt.Errorf("failed to write cover file: %w", err)
+	}
+
+	GoLog("[Cover] Extracted cover art to: %s (%d KB)\n", outputPath, len(coverData)/1024)
+	return nil
+}
+
+// FetchAndSaveLyrics fetches lyrics from lrclib and saves as .lrc file.
+func FetchAndSaveLyrics(trackName, artistName, spotifyID string, durationMs int64, outputPath string) error {
+	client := NewLyricsClient()
+	durationSec := float64(durationMs) / 1000.0
+
+	lyrics, err := client.FetchLyricsAllSources(spotifyID, trackName, artistName, durationSec)
+	if err != nil {
+		return fmt.Errorf("lyrics not found: %w", err)
+	}
+
+	if lyrics.Instrumental {
+		return fmt.Errorf("track is instrumental, no lyrics available")
+	}
+
+	lrcContent := convertToLRCWithMetadata(lyrics, trackName, artistName)
+	if lrcContent == "" {
+		return fmt.Errorf("failed to generate LRC content")
+	}
+
+	if err := os.WriteFile(outputPath, []byte(lrcContent), 0644); err != nil {
+		return fmt.Errorf("failed to write LRC file: %w", err)
+	}
+
+	GoLog("[Lyrics] Saved LRC to: %s (%d lines)\n", outputPath, len(lyrics.Lines))
+	return nil
+}
+
+// ReEnrichFile re-embeds metadata, cover art, and lyrics into an existing audio file.
+// When search_online is true, searches Spotify/Deezer by track name + artist to fetch
+// complete metadata from the internet before embedding.
+func ReEnrichFile(requestJSON string) (string, error) {
+	var req struct {
+		FilePath     string `json:"file_path"`
+		CoverURL     string `json:"cover_url"`
+		MaxQuality   bool   `json:"max_quality"`
+		EmbedLyrics  bool   `json:"embed_lyrics"`
+		SpotifyID    string `json:"spotify_id"`
+		TrackName    string `json:"track_name"`
+		ArtistName   string `json:"artist_name"`
+		AlbumName    string `json:"album_name"`
+		AlbumArtist  string `json:"album_artist"`
+		TrackNumber  int    `json:"track_number"`
+		DiscNumber   int    `json:"disc_number"`
+		ReleaseDate  string `json:"release_date"`
+		ISRC         string `json:"isrc"`
+		Genre        string `json:"genre"`
+		Label        string `json:"label"`
+		Copyright    string `json:"copyright"`
+		DurationMs   int64  `json:"duration_ms"`
+		SearchOnline bool   `json:"search_online"`
+	}
+
+	if err := json.Unmarshal([]byte(requestJSON), &req); err != nil {
+		return "", fmt.Errorf("failed to parse request: %w", err)
+	}
+
+	if req.FilePath == "" {
+		return "", fmt.Errorf("file_path is required")
+	}
+
+	GoLog("[ReEnrich] Starting re-enrichment for: %s\n", req.FilePath)
+
+	// When search_online is true, search for metadata from internet
+	// Priority: 1) Deezer (reliable, no credentials) 2) Extension providers (spotify-web etc) 3) Spotify built-in API (last resort, deprecated)
+	if req.SearchOnline && req.TrackName != "" && req.ArtistName != "" {
+		GoLog("[ReEnrich] Searching online metadata for: %s - %s\n", req.TrackName, req.ArtistName)
+		searchQuery := req.TrackName + " " + req.ArtistName
+		found := false
+
+		// 1) Try Deezer first (reliable, no credentials needed)
+		GoLog("[ReEnrich] Trying Deezer search...\n")
+		deezerClient := GetDeezerClient()
+		{
+			ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+			deezerResults, err := deezerClient.SearchAll(ctx, searchQuery, 5, 0, "track")
+			cancel()
+			if err == nil && len(deezerResults.Tracks) > 0 {
+				track := deezerResults.Tracks[0]
+				GoLog("[ReEnrich] Deezer match: %s - %s (album: %s)\n", track.Name, track.Artists, track.AlbumName)
+				req.SpotifyID = "deezer:" + track.SpotifyID
+				req.AlbumName = track.AlbumName
+				req.AlbumArtist = track.AlbumArtist
+				req.TrackNumber = track.TrackNumber
+				req.DiscNumber = track.DiscNumber
+				req.ReleaseDate = track.ReleaseDate
+				req.ISRC = track.ISRC
+				if track.Images != "" {
+					req.CoverURL = track.Images
+				}
+				req.DurationMs = int64(track.DurationMS)
+				found = true
+			} else if err != nil {
+				GoLog("[ReEnrich] Deezer search failed: %v\n", err)
+			}
+		}
+
+		// 2) Try extension metadata providers (spotify-web etc) if Deezer failed
+		if !found {
+			GoLog("[ReEnrich] Trying extension metadata providers...\n")
+			manager := GetExtensionManager()
+			extTracks, extErr := manager.SearchTracksWithExtensions(searchQuery, 5)
+			if extErr == nil && len(extTracks) > 0 {
+				track := extTracks[0]
+				GoLog("[ReEnrich] Extension match (%s): %s - %s (album: %s)\n", track.ProviderID, track.Name, track.Artists, track.AlbumName)
+				if track.SpotifyID != "" {
+					req.SpotifyID = track.SpotifyID
+				} else if track.DeezerID != "" {
+					req.SpotifyID = "deezer:" + track.DeezerID
+				} else {
+					req.SpotifyID = track.ID
+				}
+				req.AlbumName = track.AlbumName
+				req.AlbumArtist = track.AlbumArtist
+				req.TrackNumber = track.TrackNumber
+				req.DiscNumber = track.DiscNumber
+				req.ReleaseDate = track.ReleaseDate
+				req.ISRC = track.ISRC
+				coverURL := track.ResolvedCoverURL()
+				if coverURL != "" {
+					req.CoverURL = coverURL
+				}
+				req.DurationMs = int64(track.DurationMS)
+				if track.Genre != "" {
+					req.Genre = track.Genre
+				}
+				if track.Label != "" {
+					req.Label = track.Label
+				}
+				if track.Copyright != "" {
+					req.Copyright = track.Copyright
+				}
+				found = true
+			} else if extErr != nil {
+				GoLog("[ReEnrich] Extension search failed: %v\n", extErr)
+			}
+		}
+
+		// 3) Try Spotify built-in API as last resort (will be deprecated)
+		if !found {
+			GoLog("[ReEnrich] Trying Spotify API (fallback)...\n")
+			spotifyClient, spotifyErr := NewSpotifyMetadataClient()
+			if spotifyErr == nil {
+				ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+				results, err := spotifyClient.SearchTracks(ctx, searchQuery, 5)
+				cancel()
+				if err == nil && len(results.Tracks) > 0 {
+					track := results.Tracks[0]
+					GoLog("[ReEnrich] Spotify match: %s - %s (album: %s)\n", track.Name, track.Artists, track.AlbumName)
+					req.SpotifyID = track.SpotifyID
+					req.AlbumName = track.AlbumName
+					req.AlbumArtist = track.AlbumArtist
+					req.TrackNumber = track.TrackNumber
+					req.DiscNumber = track.DiscNumber
+					req.ReleaseDate = track.ReleaseDate
+					req.ISRC = track.ISRC
+					if track.Images != "" {
+						req.CoverURL = track.Images
+					}
+					req.DurationMs = int64(track.DurationMS)
+					found = true
+				} else if err != nil {
+					GoLog("[ReEnrich] Spotify search failed: %v\n", err)
+				}
+			} else {
+				GoLog("[ReEnrich] Spotify client unavailable: %v\n", spotifyErr)
+			}
+		}
+
+		// Try to get extended metadata (genre, label) from Deezer if not already set
+		if found && req.ISRC != "" && (req.Genre == "" || req.Label == "") {
+			ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+			extMeta, err := deezerClient.GetExtendedMetadataByISRC(ctx, req.ISRC)
+			cancel()
+			if err == nil && extMeta != nil {
+				if req.Genre == "" && extMeta.Genre != "" {
+					req.Genre = extMeta.Genre
+				}
+				if req.Label == "" && extMeta.Label != "" {
+					req.Label = extMeta.Label
+				}
+				GoLog("[ReEnrich] Extended metadata: genre=%s, label=%s\n", req.Genre, req.Label)
+			}
+		}
+
+		if !found {
+			GoLog("[ReEnrich] No online match found, using existing metadata\n")
+		}
+	}
+
+	// Log metadata summary before embedding
+	GoLog("[ReEnrich] Metadata to embed: title=%s, artist=%s, album=%s, albumArtist=%s\n",
+		req.TrackName, req.ArtistName, req.AlbumName, req.AlbumArtist)
+	GoLog("[ReEnrich] track=%d, disc=%d, date=%s, isrc=%s, genre=%s, label=%s\n",
+		req.TrackNumber, req.DiscNumber, req.ReleaseDate, req.ISRC, req.Genre, req.Label)
+
+	// Download cover art to temp file
+	var coverTempPath string
+	if req.CoverURL != "" {
+		coverData, err := downloadCoverToMemory(req.CoverURL, req.MaxQuality)
+		if err != nil {
+			GoLog("[ReEnrich] Failed to download cover: %v\n", err)
+		} else {
+			tmpFile, err := os.CreateTemp("", "reenrich_cover_*.jpg")
+			if err == nil {
+				coverTempPath = tmpFile.Name()
+				tmpFile.Write(coverData)
+				tmpFile.Close()
+				GoLog("[ReEnrich] Cover downloaded: %d KB\n", len(coverData)/1024)
+			}
+		}
+	}
+	// Only cleanup cover temp for FLAC (native embed).
+	// For MP3/Opus, Dart needs the file for FFmpeg — Dart handles cleanup.
+	cleanupCover := true
+
+	defer func() {
+		if cleanupCover && coverTempPath != "" {
+			os.Remove(coverTempPath)
+		}
+	}()
+
+	// Fetch lyrics
+	var lyricsLRC string
+	if req.EmbedLyrics {
+		client := NewLyricsClient()
+		durationSec := float64(req.DurationMs) / 1000.0
+		lyrics, err := client.FetchLyricsAllSources(req.SpotifyID, req.TrackName, req.ArtistName, durationSec)
+		if err != nil {
+			GoLog("[ReEnrich] Lyrics not found: %v\n", err)
+		} else if !lyrics.Instrumental {
+			lyricsLRC = convertToLRCWithMetadata(lyrics, req.TrackName, req.ArtistName)
+			GoLog("[ReEnrich] Lyrics fetched: %d lines\n", len(lyrics.Lines))
+		} else {
+			GoLog("[ReEnrich] Track is instrumental\n")
+		}
+	}
+
+	lower := strings.ToLower(req.FilePath)
+	isFlac := strings.HasSuffix(lower, ".flac")
+
+	// Build enriched metadata response for Dart (includes online search results)
+	enrichedMeta := map[string]interface{}{
+		"track_name":   req.TrackName,
+		"artist_name":  req.ArtistName,
+		"album_name":   req.AlbumName,
+		"album_artist": req.AlbumArtist,
+		"release_date": req.ReleaseDate,
+		"track_number": req.TrackNumber,
+		"disc_number":  req.DiscNumber,
+		"isrc":         req.ISRC,
+		"genre":        req.Genre,
+		"label":        req.Label,
+		"copyright":    req.Copyright,
+		"cover_url":    req.CoverURL,
+		"spotify_id":   req.SpotifyID,
+		"duration_ms":  req.DurationMs,
+	}
+
+	if isFlac {
+		// Native Go FLAC metadata embedding
+		metadata := Metadata{
+			Title:       req.TrackName,
+			Artist:      req.ArtistName,
+			Album:       req.AlbumName,
+			AlbumArtist: req.AlbumArtist,
+			Date:        req.ReleaseDate,
+			TrackNumber: req.TrackNumber,
+			DiscNumber:  req.DiscNumber,
+			ISRC:        req.ISRC,
+			Genre:       req.Genre,
+			Label:       req.Label,
+			Copyright:   req.Copyright,
+			Lyrics:      lyricsLRC,
+		}
+
+		if err := EmbedMetadata(req.FilePath, metadata, coverTempPath); err != nil {
+			return "", fmt.Errorf("failed to embed metadata: %w", err)
+		}
+
+		GoLog("[ReEnrich] FLAC metadata embedded successfully\n")
+
+		result := map[string]interface{}{
+			"method":            "native",
+			"success":           true,
+			"enriched_metadata": enrichedMeta,
+		}
+		jsonBytes, _ := json.Marshal(result)
+		return string(jsonBytes), nil
+	}
+
+	// MP3/Opus: return metadata map for Dart to use FFmpeg
+	// Don't cleanup cover temp — Dart needs it for FFmpeg embed
+	cleanupCover = false
+	result := map[string]interface{}{
+		"method":            "ffmpeg",
+		"cover_path":        coverTempPath,
+		"lyrics":            lyricsLRC,
+		"enriched_metadata": enrichedMeta,
+		"metadata": map[string]string{
+			"TITLE":       req.TrackName,
+			"ARTIST":      req.ArtistName,
+			"ALBUM":       req.AlbumName,
+			"ALBUMARTIST": req.AlbumArtist,
+			"DATE":        req.ReleaseDate,
+			"ISRC":        req.ISRC,
+			"GENRE":       req.Genre,
+		},
+	}
+	if req.TrackNumber > 0 {
+		result["metadata"].(map[string]string)["TRACKNUMBER"] = fmt.Sprintf("%d", req.TrackNumber)
+	}
+	if req.DiscNumber > 0 {
+		result["metadata"].(map[string]string)["DISCNUMBER"] = fmt.Sprintf("%d", req.DiscNumber)
+	}
+	if req.Label != "" {
+		result["metadata"].(map[string]string)["ORGANIZATION"] = req.Label
+	}
+	if req.Copyright != "" {
+		result["metadata"].(map[string]string)["COPYRIGHT"] = req.Copyright
+	}
+	if lyricsLRC != "" {
+		result["metadata"].(map[string]string)["LYRICS"] = lyricsLRC
+		result["metadata"].(map[string]string)["UNSYNCEDLYRICS"] = lyricsLRC
+	}
+
+	jsonBytes, _ := json.Marshal(result)
+	return string(jsonBytes), nil
 }
 
 // ==================== EXTENSION SYSTEM ====================

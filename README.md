@@ -98,6 +98,7 @@ The software is provided "as is", without warranty of any kind. The author assum
 - **Qobuz**: [dabmusic.xyz](https://dabmusic.xyz), [squid.wtf](https://squid.wtf), [jumo-dl](https://jumo-dl.pages.dev)
 - **Amazon**: [AfkarXYZ](https://github.com/afkarxyz)
 - **Lyrics**: [LRCLib](https://lrclib.net)
+- **YouTube Audio**: [Cobalt](https://cobalt.tools) via [qwkuns.me](https://qwkuns.me), [SpotubeDL](https://spotubedl.com)
 - **Track Linking**: [SongLink / Odesli](https://odesli.co), [IDHS](https://github.com/sjdonado/idonthavespotify)
 
 

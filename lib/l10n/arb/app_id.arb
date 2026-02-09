@@ -3154,5 +3154,53 @@
     }
   },
   "cacheRefreshStats": "Segarkan statistik",
-  "@cacheRefreshStats": {"description": "Button label to refresh cache statistics"}
+  "@cacheRefreshStats": {"description": "Button label to refresh cache statistics"},
+
+  "trackSaveCoverArt": "Simpan Cover Art",
+  "@trackSaveCoverArt": {"description": "Menu action - save album cover art as file"},
+  "trackSaveCoverArtSubtitle": "Simpan cover album sebagai file .jpg",
+  "@trackSaveCoverArtSubtitle": {"description": "Subtitle for save cover art action"},
+  "trackSaveLyrics": "Simpan Lirik (.lrc)",
+  "@trackSaveLyrics": {"description": "Menu action - save lyrics as .lrc file"},
+  "trackSaveLyricsSubtitle": "Ambil dan simpan lirik sebagai file .lrc",
+  "@trackSaveLyricsSubtitle": {"description": "Subtitle for save lyrics action"},
+  "trackReEnrich": "Perkaya Ulang Metadata",
+  "@trackReEnrich": {"description": "Menu action - re-embed metadata into audio file"},
+  "trackReEnrichSubtitle": "Tanamkan ulang metadata tanpa mengunduh ulang",
+  "@trackReEnrichSubtitle": {"description": "Subtitle for re-enrich metadata action"},
+  "trackReEnrichOnlineSubtitle": "Cari metadata dari internet dan tanamkan ke file",
+  "@trackReEnrichOnlineSubtitle": {"description": "Subtitle for re-enrich metadata action for local items"},
+  "trackEditMetadata": "Edit Metadata",
+  "@trackEditMetadata": {"description": "Menu action - edit embedded metadata"},
+  "trackCoverSaved": "Cover art disimpan ke {fileName}",
+  "@trackCoverSaved": {
+    "description": "Snackbar after cover art saved",
+    "placeholders": {
+      "fileName": {"type": "String"}
+    }
+  },
+  "trackCoverNoSource": "Tidak ada sumber cover art",
+  "@trackCoverNoSource": {"description": "Snackbar when no cover art URL or embedded cover"},
+  "trackLyricsSaved": "Lirik disimpan ke {fileName}",
+  "@trackLyricsSaved": {
+    "description": "Snackbar after lyrics saved",
+    "placeholders": {
+      "fileName": {"type": "String"}
+    }
+  },
+  "trackReEnrichProgress": "Memperkaya ulang metadata...",
+  "@trackReEnrichProgress": {"description": "Snackbar while re-enriching metadata"},
+  "trackReEnrichSearching": "Mencari metadata dari internet...",
+  "@trackReEnrichSearching": {"description": "Snackbar while searching metadata from internet for local items"},
+  "trackReEnrichSuccess": "Metadata berhasil diperkaya ulang",
+  "@trackReEnrichSuccess": {"description": "Snackbar after successful re-enrichment"},
+  "trackReEnrichFfmpegFailed": "Gagal menanamkan metadata via FFmpeg",
+  "@trackReEnrichFfmpegFailed": {"description": "Snackbar when FFmpeg embed fails for MP3/Opus"},
+  "trackSaveFailed": "Gagal: {error}",
+  "@trackSaveFailed": {
+    "description": "Snackbar when save operation fails",
+    "placeholders": {
+      "error": {"type": "String"}
+    }
+  }
 }

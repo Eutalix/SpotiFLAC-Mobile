@@ -1549,7 +1549,7 @@ class _HomeTabState extends ConsumerState<HomeTab>
       duration: item.durationMs ~/ 1000,
       trackNumber: 1,
       discNumber: 1,
-      isrc: item.id,
+      isrc: null,
       releaseDate: null,
       coverUrl: item.coverUrl,
       source: item.providerId ?? 'spotify-web',

@@ -2134,5 +2134,53 @@
     }
   },
   "cacheRefreshStats": "Refresh stats",
-  "@cacheRefreshStats": {"description": "Button label to refresh cache statistics"}
+  "@cacheRefreshStats": {"description": "Button label to refresh cache statistics"},
+
+  "trackSaveCoverArt": "Save Cover Art",
+  "@trackSaveCoverArt": {"description": "Menu action - save album cover art as file"},
+  "trackSaveCoverArtSubtitle": "Save album art as .jpg file",
+  "@trackSaveCoverArtSubtitle": {"description": "Subtitle for save cover art action"},
+  "trackSaveLyrics": "Save Lyrics (.lrc)",
+  "@trackSaveLyrics": {"description": "Menu action - save lyrics as .lrc file"},
+  "trackSaveLyricsSubtitle": "Fetch and save lyrics as .lrc file",
+  "@trackSaveLyricsSubtitle": {"description": "Subtitle for save lyrics action"},
+  "trackReEnrich": "Re-enrich Metadata",
+  "@trackReEnrich": {"description": "Menu action - re-embed metadata into audio file"},
+  "trackReEnrichSubtitle": "Re-embed metadata without re-downloading",
+  "@trackReEnrichSubtitle": {"description": "Subtitle for re-enrich metadata action"},
+  "trackReEnrichOnlineSubtitle": "Search metadata online and embed into file",
+  "@trackReEnrichOnlineSubtitle": {"description": "Subtitle for re-enrich metadata action for local items"},
+  "trackEditMetadata": "Edit Metadata",
+  "@trackEditMetadata": {"description": "Menu action - edit embedded metadata"},
+  "trackCoverSaved": "Cover art saved to {fileName}",
+  "@trackCoverSaved": {
+    "description": "Snackbar after cover art saved",
+    "placeholders": {
+      "fileName": {"type": "String"}
+    }
+  },
+  "trackCoverNoSource": "No cover art source available",
+  "@trackCoverNoSource": {"description": "Snackbar when no cover art URL or embedded cover"},
+  "trackLyricsSaved": "Lyrics saved to {fileName}",
+  "@trackLyricsSaved": {
+    "description": "Snackbar after lyrics saved",
+    "placeholders": {
+      "fileName": {"type": "String"}
+    }
+  },
+  "trackReEnrichProgress": "Re-enriching metadata...",
+  "@trackReEnrichProgress": {"description": "Snackbar while re-enriching metadata"},
+  "trackReEnrichSearching": "Searching metadata online...",
+  "@trackReEnrichSearching": {"description": "Snackbar while searching metadata from internet for local items"},
+  "trackReEnrichSuccess": "Metadata re-enriched successfully",
+  "@trackReEnrichSuccess": {"description": "Snackbar after successful re-enrichment"},
+  "trackReEnrichFfmpegFailed": "FFmpeg metadata embed failed",
+  "@trackReEnrichFfmpegFailed": {"description": "Snackbar when FFmpeg embed fails for MP3/Opus"},
+  "trackSaveFailed": "Failed: {error}",
+  "@trackSaveFailed": {
+    "description": "Snackbar when save operation fails",
+    "placeholders": {
+      "error": {"type": "String"}
+    }
+  }
 }

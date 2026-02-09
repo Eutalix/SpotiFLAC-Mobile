@@ -23,6 +23,10 @@ type AudioMetadata struct {
 	TrackNumber int
 	DiscNumber  int
 	ISRC        string
+	Label       string
+	Copyright   string
+	Composer    string
+	Comment     string
 }
 
 // MP3Quality represents MP3 specific quality info
@@ -171,6 +175,12 @@ func parseID3v22Frames(data []byte, metadata *AudioMetadata, tagUnsync bool) {
 			metadata.TrackNumber = parseTrackNumber(value)
 		case "TPA":
 			metadata.DiscNumber = parseTrackNumber(value)
+		case "TCM":
+			metadata.Composer = value
+		case "TPB":
+			metadata.Label = value
+		case "TCR":
+			metadata.Copyright = value
 		}
 
 		pos += 6 + frameSize
@@ -277,6 +287,16 @@ func parseID3v23Frames(data []byte, metadata *AudioMetadata, version byte, tagUn
 			metadata.DiscNumber = parseTrackNumber(value)
 		case "TSRC":
 			metadata.ISRC = value
+		case "TCOM":
+			metadata.Composer = value
+		case "TPUB":
+			metadata.Label = value
+		case "TCOP":
+			metadata.Copyright = value
+		case "COMM":
+			if v := extractCommentFrame(frameData); v != "" {
+				metadata.Comment = v
+			}
 		}
 
 		pos += 10 + frameSize
@@ -337,6 +357,46 @@ func extractTextFrame(data []byte) string {
 	default:
 		return strings.TrimRight(string(text), "\x00")
 	}
+}
+
+// extractCommentFrame parses an ID3v2 COMM frame.
+// Format: encoding(1) + language(3) + description(null-terminated) + text
+func extractCommentFrame(data []byte) string {
+	if len(data) < 5 {
+		return ""
+	}
+	encoding := data[0]
+	// skip 3-byte language code
+	rest := data[4:]
+
+	// find null terminator separating description from text
+	var text []byte
+	switch encoding {
+	case 1, 2: // UTF-16 variants use double-null terminator
+		for i := 0; i+1 < len(rest); i += 2 {
+			if rest[i] == 0 && rest[i+1] == 0 {
+				text = rest[i+2:]
+				break
+			}
+		}
+	default: // ISO-8859-1 or UTF-8
+		idx := bytes.IndexByte(rest, 0)
+		if idx >= 0 && idx+1 < len(rest) {
+			text = rest[idx+1:]
+		} else {
+			text = rest
+		}
+	}
+
+	if len(text) == 0 {
+		return ""
+	}
+
+	// re-prepend encoding byte so extractTextFrame can decode properly
+	framed := make([]byte, 1+len(text))
+	framed[0] = encoding
+	copy(framed[1:], text)
+	return extractTextFrame(framed)
 }
 
 func decodeUTF16(data []byte) string {
@@ -779,6 +839,14 @@ func parseVorbisComments(data []byte, metadata *AudioMetadata) {
 			metadata.DiscNumber = parseTrackNumber(value)
 		case "ISRC":
 			metadata.ISRC = value
+		case "COMPOSER":
+			metadata.Composer = value
+		case "COMMENT", "DESCRIPTION":
+			metadata.Comment = value
+		case "ORGANIZATION", "LABEL", "PUBLISHER":
+			metadata.Label = value
+		case "COPYRIGHT":
+			metadata.Copyright = value
 		}
 	}
 }

@@ -5037,6 +5037,102 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Refresh stats'**
   String get cacheRefreshStats;
+
+  /// Menu action - save album cover art as file
+  ///
+  /// In en, this message translates to:
+  /// **'Save Cover Art'**
+  String get trackSaveCoverArt;
+
+  /// Subtitle for save cover art action
+  ///
+  /// In en, this message translates to:
+  /// **'Save album art as .jpg file'**
+  String get trackSaveCoverArtSubtitle;
+
+  /// Menu action - save lyrics as .lrc file
+  ///
+  /// In en, this message translates to:
+  /// **'Save Lyrics (.lrc)'**
+  String get trackSaveLyrics;
+
+  /// Subtitle for save lyrics action
+  ///
+  /// In en, this message translates to:
+  /// **'Fetch and save lyrics as .lrc file'**
+  String get trackSaveLyricsSubtitle;
+
+  /// Menu action - re-embed metadata into audio file
+  ///
+  /// In en, this message translates to:
+  /// **'Re-enrich Metadata'**
+  String get trackReEnrich;
+
+  /// Subtitle for re-enrich metadata action
+  ///
+  /// In en, this message translates to:
+  /// **'Re-embed metadata without re-downloading'**
+  String get trackReEnrichSubtitle;
+
+  /// Subtitle for re-enrich metadata action for local items
+  ///
+  /// In en, this message translates to:
+  /// **'Search metadata online and embed into file'**
+  String get trackReEnrichOnlineSubtitle;
+
+  /// Menu action - edit embedded metadata
+  ///
+  /// In en, this message translates to:
+  /// **'Edit Metadata'**
+  String get trackEditMetadata;
+
+  /// Snackbar after cover art saved
+  ///
+  /// In en, this message translates to:
+  /// **'Cover art saved to {fileName}'**
+  String trackCoverSaved(String fileName);
+
+  /// Snackbar when no cover art URL or embedded cover
+  ///
+  /// In en, this message translates to:
+  /// **'No cover art source available'**
+  String get trackCoverNoSource;
+
+  /// Snackbar after lyrics saved
+  ///
+  /// In en, this message translates to:
+  /// **'Lyrics saved to {fileName}'**
+  String trackLyricsSaved(String fileName);
+
+  /// Snackbar while re-enriching metadata
+  ///
+  /// In en, this message translates to:
+  /// **'Re-enriching metadata...'**
+  String get trackReEnrichProgress;
+
+  /// Snackbar while searching metadata from internet for local items
+  ///
+  /// In en, this message translates to:
+  /// **'Searching metadata online...'**
+  String get trackReEnrichSearching;
+
+  /// Snackbar after successful re-enrichment
+  ///
+  /// In en, this message translates to:
+  /// **'Metadata re-enriched successfully'**
+  String get trackReEnrichSuccess;
+
+  /// Snackbar when FFmpeg embed fails for MP3/Opus
+  ///
+  /// In en, this message translates to:
+  /// **'FFmpeg metadata embed failed'**
+  String get trackReEnrichFfmpegFailed;
+
+  /// Snackbar when save operation fails
+  ///
+  /// In en, this message translates to:
+  /// **'Failed: {error}'**
+  String trackSaveFailed(String error);
 }
 
 class _AppLocalizationsDelegate

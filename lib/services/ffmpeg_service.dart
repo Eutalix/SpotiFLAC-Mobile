@@ -365,6 +365,7 @@ class FFmpegService {
     }
 
     cmdBuffer.write('-map 0:a ');
+    cmdBuffer.write('-map_metadata -1 ');
 
     if (coverPath != null) {
       cmdBuffer.write('-map 1:0 ');
@@ -441,6 +442,8 @@ class FFmpegService {
     final StringBuffer cmdBuffer = StringBuffer();
     cmdBuffer.write('-i "$opusPath" ');
     cmdBuffer.write('-map 0:a ');
+    cmdBuffer.write('-map_metadata -1 ');
+    cmdBuffer.write('-map_metadata:s:a -1 ');
     cmdBuffer.write('-c:a copy ');
 
     if (metadata != null) {
@@ -653,6 +656,12 @@ class FFmpegService {
         case 'LYRICS':
         case 'UNSYNCEDLYRICS':
           id3Map['lyrics'] = value;
+          break;
+        case 'COMPOSER':
+          id3Map['composer'] = value;
+          break;
+        case 'COMMENT':
+          id3Map['comment'] = value;
           break;
         default:
           id3Map[key.toLowerCase()] = value;

@@ -122,18 +122,19 @@ func (s *SongLinkClient) CheckTrackAvailability(spotifyTrackID string, isrc stri
 		availability.QobuzID = extractQobuzIDFromURL(qobuzLink.URL)
 	}
 
-	if youtubeLink, ok := songLinkResp.LinksByPlatform["youtube"]; ok && youtubeLink.URL != "" {
+	// Prefer youtubeMusic URLs — they bypass Cobalt login requirements
+	if ytMusicLink, ok := songLinkResp.LinksByPlatform["youtubeMusic"]; ok && ytMusicLink.URL != "" {
 		availability.YouTube = true
-		availability.YouTubeURL = youtubeLink.URL
-		availability.YouTubeID = extractYouTubeIDFromURL(youtubeLink.URL)
+		availability.YouTubeURL = ytMusicLink.URL
+		availability.YouTubeID = extractYouTubeIDFromURL(ytMusicLink.URL)
 	}
 
-	// Also check youtubeMusic as fallback
+	// Fallback to regular youtube if youtubeMusic not available
 	if !availability.YouTube {
-		if ytMusicLink, ok := songLinkResp.LinksByPlatform["youtubeMusic"]; ok && ytMusicLink.URL != "" {
+		if youtubeLink, ok := songLinkResp.LinksByPlatform["youtube"]; ok && youtubeLink.URL != "" {
 			availability.YouTube = true
-			availability.YouTubeURL = ytMusicLink.URL
-			availability.YouTubeID = extractYouTubeIDFromURL(ytMusicLink.URL)
+			availability.YouTubeURL = youtubeLink.URL
+			availability.YouTubeID = extractYouTubeIDFromURL(youtubeLink.URL)
 		}
 	}
 

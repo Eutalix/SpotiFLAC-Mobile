@@ -217,6 +217,14 @@ import Gobackend  // Import Go framework
             if let error = error { throw error }
             return response
             
+        case "editFileMetadata":
+            let args = call.arguments as! [String: Any]
+            let filePath = args["file_path"] as! String
+            let metadataJson = args["metadata_json"] as? String ?? "{}"
+            let response = GobackendEditFileMetadata(filePath, metadataJson, &error)
+            if let error = error { throw error }
+            return response
+            
         case "searchDeezerAll":
             let args = call.arguments as! [String: Any]
             let query = args["query"] as! String

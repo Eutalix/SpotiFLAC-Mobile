@@ -374,11 +374,81 @@ class PlatformBridge {
     await _channel.invokeMethod('cleanupConnections');
   }
 
+  static Future<Map<String, dynamic>> downloadCoverToFile(
+    String coverUrl,
+    String outputPath, {
+    bool maxQuality = true,
+  }) async {
+    final result = await _channel.invokeMethod('downloadCoverToFile', {
+      'cover_url': coverUrl,
+      'output_path': outputPath,
+      'max_quality': maxQuality,
+    });
+    return jsonDecode(result as String) as Map<String, dynamic>;
+  }
+
+  static Future<Map<String, dynamic>> extractCoverToFile(
+    String audioPath,
+    String outputPath,
+  ) async {
+    final result = await _channel.invokeMethod('extractCoverToFile', {
+      'audio_path': audioPath,
+      'output_path': outputPath,
+    });
+    return jsonDecode(result as String) as Map<String, dynamic>;
+  }
+
+  static Future<Map<String, dynamic>> fetchAndSaveLyrics({
+    required String trackName,
+    required String artistName,
+    required String spotifyId,
+    required int durationMs,
+    required String outputPath,
+  }) async {
+    final result = await _channel.invokeMethod('fetchAndSaveLyrics', {
+      'track_name': trackName,
+      'artist_name': artistName,
+      'spotify_id': spotifyId,
+      'duration_ms': durationMs,
+      'output_path': outputPath,
+    });
+    return jsonDecode(result as String) as Map<String, dynamic>;
+  }
+
+  static Future<Map<String, dynamic>> reEnrichFile(Map<String, dynamic> request) async {
+    final requestJSON = jsonEncode(request);
+    final result = await _channel.invokeMethod('reEnrichFile', {
+      'request_json': requestJSON,
+    });
+    return jsonDecode(result as String) as Map<String, dynamic>;
+  }
+
   static Future<Map<String, dynamic>> readFileMetadata(String filePath) async {
     final result = await _channel.invokeMethod('readFileMetadata', {
       'file_path': filePath,
     });
     return jsonDecode(result as String) as Map<String, dynamic>;
+  }
+
+  static Future<Map<String, dynamic>> editFileMetadata(
+    String filePath,
+    Map<String, String> metadata,
+  ) async {
+    final metadataJSON = jsonEncode(metadata);
+    final result = await _channel.invokeMethod('editFileMetadata', {
+      'file_path': filePath,
+      'metadata_json': metadataJSON,
+    });
+    return jsonDecode(result as String) as Map<String, dynamic>;
+  }
+
+  static Future<bool> writeTempToSaf(String tempPath, String safUri) async {
+    final result = await _channel.invokeMethod('writeTempToSaf', {
+      'temp_path': tempPath,
+      'saf_uri': safUri,
+    });
+    final map = jsonDecode(result as String) as Map<String, dynamic>;
+    return map['success'] == true;
   }
 
   static Future<void> startDownloadService({

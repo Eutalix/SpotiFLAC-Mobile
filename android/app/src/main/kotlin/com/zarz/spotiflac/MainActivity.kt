@@ -1597,7 +1597,182 @@ class MainActivity: FlutterFragmentActivity() {
                         "readFileMetadata" -> {
                             val filePath = call.argument<String>("file_path") ?: ""
                             val response = withContext(Dispatchers.IO) {
-                                Gobackend.readFileMetadata(filePath)
+                                try {
+                                    if (filePath.startsWith("content://")) {
+                                        val uri = Uri.parse(filePath)
+                                        val tempPath = copyUriToTemp(uri)
+                                            ?: return@withContext """{"error":"Failed to copy SAF file to temp"}"""
+                                        try {
+                                            Gobackend.readFileMetadata(tempPath)
+                                        } finally {
+                                            try { File(tempPath).delete() } catch (_: Exception) {}
+                                        }
+                                    } else {
+                                        Gobackend.readFileMetadata(filePath)
+                                    }
+                                } catch (e: Exception) {
+                                    android.util.Log.e("SpotiFLAC", "readFileMetadata failed: ${e.message}", e)
+                                    """{"error":"${e.message?.replace("\"", "'")}"}"""
+                                }
+                            }
+                            result.success(response)
+                        }
+                        "editFileMetadata" -> {
+                            val filePath = call.argument<String>("file_path") ?: ""
+                            val metadataJson = call.argument<String>("metadata_json") ?: "{}"
+                            val response = withContext(Dispatchers.IO) {
+                                try {
+                                    if (filePath.startsWith("content://")) {
+                                        val uri = Uri.parse(filePath)
+                                        val tempPath = copyUriToTemp(uri)
+                                            ?: return@withContext """{"error":"Failed to copy SAF file to temp"}"""
+                                        try {
+                                            val raw = Gobackend.editFileMetadata(tempPath, metadataJson)
+                                            val obj = JSONObject(raw)
+                                            val method = obj.optString("method", "")
+                                            if (method == "ffmpeg") {
+                                                // MP3/Opus: Dart needs to FFmpeg the temp file, then call writeTempToSaf
+                                                obj.put("temp_path", tempPath)
+                                                obj.put("saf_uri", filePath)
+                                                return@withContext obj.toString()
+                                                // Note: temp file NOT deleted here - Dart will clean up after FFmpeg + writeTempToSaf
+                                            }
+                                            // FLAC: Go wrote directly to temp, copy back now
+                                            if (!writeUriFromPath(uri, tempPath)) {
+                                                return@withContext """{"error":"Failed to write metadata back to SAF file"}"""
+                                            }
+                                            raw
+                                        } catch (e: Exception) {
+                                            try { File(tempPath).delete() } catch (_: Exception) {}
+                                            throw e
+                                        }
+                                    } else {
+                                        Gobackend.editFileMetadata(filePath, metadataJson)
+                                    }
+                                } catch (e: Exception) {
+                                    android.util.Log.e("SpotiFLAC", "editFileMetadata failed: ${e.message}", e)
+                                    """{"error":"${e.message?.replace("\"", "'")}"}"""
+                                }
+                            }
+                            result.success(response)
+                        }
+                        "writeTempToSaf" -> {
+                            val tempPath = call.argument<String>("temp_path") ?: ""
+                            val safUri = call.argument<String>("saf_uri") ?: ""
+                            val response = withContext(Dispatchers.IO) {
+                                try {
+                                    val uri = Uri.parse(safUri)
+                                    if (writeUriFromPath(uri, tempPath)) {
+                                        """{"success":true}"""
+                                    } else {
+                                        """{"success":false,"error":"Failed to write back to SAF"}"""
+                                    }
+                                } finally {
+                                    try { File(tempPath).delete() } catch (_: Exception) {}
+                                }
+                            }
+                            result.success(response)
+                        }
+                        "downloadCoverToFile" -> {
+                            val coverUrl = call.argument<String>("cover_url") ?: ""
+                            val outputPath = call.argument<String>("output_path") ?: ""
+                            val maxQuality = call.argument<Boolean>("max_quality") ?: true
+                            val response = withContext(Dispatchers.IO) {
+                                try {
+                                    Gobackend.downloadCoverToFile(coverUrl, outputPath, maxQuality)
+                                    """{"success":true}"""
+                                } catch (e: Exception) {
+                                    """{"success":false,"error":"${e.message?.replace("\"", "'")}"}"""
+                                }
+                            }
+                            result.success(response)
+                        }
+                        "extractCoverToFile" -> {
+                            val audioPath = call.argument<String>("audio_path") ?: ""
+                            val outputPath = call.argument<String>("output_path") ?: ""
+                            val response = withContext(Dispatchers.IO) {
+                                try {
+                                    if (audioPath.startsWith("content://")) {
+                                        val uri = Uri.parse(audioPath)
+                                        val tempPath = copyUriToTemp(uri)
+                                            ?: return@withContext """{"success":false,"error":"Failed to copy SAF file to temp"}"""
+                                        try {
+                                            Gobackend.extractCoverToFile(tempPath, outputPath)
+                                            """{"success":true}"""
+                                        } finally {
+                                            try { File(tempPath).delete() } catch (_: Exception) {}
+                                        }
+                                    } else {
+                                        Gobackend.extractCoverToFile(audioPath, outputPath)
+                                        """{"success":true}"""
+                                    }
+                                } catch (e: Exception) {
+                                    """{"success":false,"error":"${e.message?.replace("\"", "'")}"}"""
+                                }
+                            }
+                            result.success(response)
+                        }
+                        "fetchAndSaveLyrics" -> {
+                            val trackName = call.argument<String>("track_name") ?: ""
+                            val artistName = call.argument<String>("artist_name") ?: ""
+                            val spotifyId = call.argument<String>("spotify_id") ?: ""
+                            val durationMs = call.argument<Long>("duration_ms") ?: 0L
+                            val outputPath = call.argument<String>("output_path") ?: ""
+                            val response = withContext(Dispatchers.IO) {
+                                try {
+                                    Gobackend.fetchAndSaveLyrics(trackName, artistName, spotifyId, durationMs, outputPath)
+                                    """{"success":true}"""
+                                } catch (e: Exception) {
+                                    """{"success":false,"error":"${e.message?.replace("\"", "'")}"}"""
+                                }
+                            }
+                            result.success(response)
+                        }
+                        "reEnrichFile" -> {
+                            val requestJson = call.argument<String>("request_json") ?: "{}"
+                            val response = withContext(Dispatchers.IO) {
+                                try {
+                                    val reqObj = JSONObject(requestJson)
+                                    val filePath = reqObj.optString("file_path", "")
+
+                                    if (filePath.startsWith("content://")) {
+                                        val uri = Uri.parse(filePath)
+                                        val tempPath = copyUriToTemp(uri)
+                                            ?: return@withContext """{"error":"Failed to copy SAF file to temp"}"""
+                                        try {
+                                            // Replace file_path with temp path for Go
+                                            reqObj.put("file_path", tempPath)
+                                            val raw = Gobackend.reEnrichFile(reqObj.toString())
+                                            val obj = JSONObject(raw)
+
+                                            if (obj.has("error")) {
+                                                return@withContext raw
+                                            }
+
+                                            val method = obj.optString("method", "")
+                                            if (method == "ffmpeg") {
+                                                // MP3/Opus: Dart handles FFmpeg on temp file, then writes back
+                                                obj.put("temp_path", tempPath)
+                                                obj.put("saf_uri", filePath)
+                                                return@withContext obj.toString()
+                                                // temp file NOT deleted - Dart cleans up after FFmpeg + writeTempToSaf
+                                            }
+
+                                            // FLAC: Go wrote directly to temp, copy back now
+                                            if (!writeUriFromPath(uri, tempPath)) {
+                                                return@withContext """{"error":"Failed to write enriched metadata back to SAF file"}"""
+                                            }
+                                            raw
+                                        } catch (e: Exception) {
+                                            try { File(tempPath).delete() } catch (_: Exception) {}
+                                            throw e
+                                        }
+                                    } else {
+                                        Gobackend.reEnrichFile(requestJson)
+                                    }
+                                } catch (e: Exception) {
+                                    """{"error":"${e.message?.replace("\"", "'")}"}"""
+                                }
                             }
                             result.success(response)
                         }
@@ -2258,7 +2433,22 @@ class MainActivity: FlutterFragmentActivity() {
                         "readAudioMetadata" -> {
                             val filePath = call.argument<String>("file_path") ?: ""
                             val response = withContext(Dispatchers.IO) {
-                                Gobackend.readAudioMetadataJSON(filePath)
+                                try {
+                                    if (filePath.startsWith("content://")) {
+                                        val uri = Uri.parse(filePath)
+                                        val tempPath = copyUriToTemp(uri)
+                                            ?: return@withContext """{"error":"Failed to copy SAF file to temp"}"""
+                                        try {
+                                            Gobackend.readAudioMetadataJSON(tempPath)
+                                        } finally {
+                                            try { File(tempPath).delete() } catch (_: Exception) {}
+                                        }
+                                    } else {
+                                        Gobackend.readAudioMetadataJSON(filePath)
+                                    }
+                                } catch (e: Exception) {
+                                    """{"error":"${e.message?.replace("\"", "'")}"}"""
+                                }
                             }
                             result.success(response)
                         }

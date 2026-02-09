@@ -2879,4 +2879,60 @@ class AppLocalizationsRu extends AppLocalizations {
 
   @override
   String get cacheRefreshStats => 'Refresh stats';
+
+  @override
+  String get trackSaveCoverArt => 'Save Cover Art';
+
+  @override
+  String get trackSaveCoverArtSubtitle => 'Save album art as .jpg file';
+
+  @override
+  String get trackSaveLyrics => 'Save Lyrics (.lrc)';
+
+  @override
+  String get trackSaveLyricsSubtitle => 'Fetch and save lyrics as .lrc file';
+
+  @override
+  String get trackReEnrich => 'Re-enrich Metadata';
+
+  @override
+  String get trackReEnrichSubtitle =>
+      'Re-embed metadata without re-downloading';
+
+  @override
+  String get trackReEnrichOnlineSubtitle =>
+      'Search metadata online and embed into file';
+
+  @override
+  String get trackEditMetadata => 'Edit Metadata';
+
+  @override
+  String trackCoverSaved(String fileName) {
+    return 'Cover art saved to $fileName';
+  }
+
+  @override
+  String get trackCoverNoSource => 'No cover art source available';
+
+  @override
+  String trackLyricsSaved(String fileName) {
+    return 'Lyrics saved to $fileName';
+  }
+
+  @override
+  String get trackReEnrichProgress => 'Re-enriching metadata...';
+
+  @override
+  String get trackReEnrichSearching => 'Searching metadata online...';
+
+  @override
+  String get trackReEnrichSuccess => 'Metadata re-enriched successfully';
+
+  @override
+  String get trackReEnrichFfmpegFailed => 'FFmpeg metadata embed failed';
+
+  @override
+  String trackSaveFailed(String error) {
+    return 'Failed: $error';
+  }
 }

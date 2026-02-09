@@ -1,5 +1,4 @@
-// Package gobackend provides YouTube download functionality via Cobalt API
-// YouTube is a lossy-only provider (not part of lossless fallback chain)
+// Package gobackend - YouTube download via Cobalt API (lossy-only provider)
 package gobackend
 
 import (
@@ -70,36 +69,28 @@ type YouTubeDownloadResult struct {
 	CoverData   []byte
 }
 
-// NewYouTubeDownloader creates or returns the singleton YouTube downloader
+func NewYouTubeDownloader() *YouTubeDownloader {
 	youtubeDownloaderOnce.Do(func() {
 		globalYouTubeDownloader = &YouTubeDownloader{
 			client: NewHTTPClientWithTimeout(120 * time.Second),
-			apiURL: "https://api.qwkuns.me", // Cobalt-based API
+			apiURL: "https://api.qwkuns.me",
 		}
 	})
 	return globalYouTubeDownloader
 }
 
-// SearchYouTube searches for a track on YouTube and returns the best matching video URL
+// SearchYouTube returns a YouTube Music search URL for the given track
 func (y *YouTubeDownloader) SearchYouTube(trackName, artistName string) (string, error) {
-	// Build search query
 	query := fmt.Sprintf("%s %s", artistName, trackName)
-
-	// Use YouTube's search to find the video
-	// We'll use a simple approach: construct a YouTube Music search URL pattern
-	// The actual video ID will be resolved by Cobalt
 	searchQuery := url.QueryEscape(query)
 
 	GoLog("[YouTube] Search query: %s\n", query)
 
-	// For now, we'll need to use YouTube Music's /watch endpoint with search
-	// A better approach is to use YouTube Data API, but Cobalt can handle music.youtube.com
 	youtubeMusicURL := fmt.Sprintf("https://music.youtube.com/search?q=%s", searchQuery)
 
 	return youtubeMusicURL, nil
 }
 
-// GetDownloadURL gets the direct download URL from Cobalt API
 func (y *YouTubeDownloader) GetDownloadURL(youtubeURL string, quality YouTubeQuality) (*CobaltResponse, error) {
 	y.mu.Lock()
 	defer y.mu.Unlock()
@@ -119,22 +110,46 @@ func (y *YouTubeDownloader) GetDownloadURL(youtubeURL string, quality YouTubeQua
 		audioBitrate = "320"
 	}
 
+	// Try primary Cobalt API first (music.youtube.com URL bypasses login)
+	cobaltURL := toYouTubeMusicURL(youtubeURL)
+	GoLog("[YouTube] Requesting from Cobalt API: %s (format: %s, bitrate: %s)\n",
+		cobaltURL, audioFormat, audioBitrate)
+
+	resp, err := y.requestCobaltDirect(cobaltURL, audioFormat, audioBitrate)
+	if err == nil {
+		return resp, nil
+	}
+	GoLog("[YouTube] Primary Cobalt failed: %v, trying SpotubeDL fallback...\n", err)
+
+	// Fallback: SpotubeDL proxy (has its own Cobalt auth)
+	videoID, extractErr := ExtractYouTubeVideoID(youtubeURL)
+	if extractErr != nil {
+		return nil, fmt.Errorf("primary cobalt failed: %w (and could not extract video ID for fallback)", err)
+	}
+
+	resp, fallbackErr := y.requestSpotubeDL(videoID, audioFormat, audioBitrate)
+	if fallbackErr != nil {
+		return nil, fmt.Errorf("all download methods failed: primary: %v, fallback: %v", err, fallbackErr)
+	}
+
+	return resp, nil
+}
+
+// requestCobaltDirect sends a download request to the primary Cobalt API.
+func (y *YouTubeDownloader) requestCobaltDirect(videoURL, audioFormat, audioBitrate string) (*CobaltResponse, error) {
 	reqBody := CobaltRequest{
-		URL:             youtubeURL,
+		URL:             videoURL,
 		AudioFormat:     audioFormat,
 		AudioBitrate:    audioBitrate,
 		DownloadMode:    "audio",
 		FilenameStyle:   "basic",
-		DisableMetadata: false,
+		DisableMetadata: true,
 	}
 
 	jsonData, err := json.Marshal(reqBody)
 	if err != nil {
 		return nil, fmt.Errorf("failed to marshal request: %w", err)
 	}
-
-	GoLog("[YouTube] Requesting from Cobalt API: %s (format: %s, bitrate: %s)\n",
-		youtubeURL, audioFormat, audioBitrate)
 
 	req, err := http.NewRequest("POST", y.apiURL, strings.NewReader(string(jsonData)))
 	if err != nil {
@@ -179,11 +194,58 @@ func (y *YouTubeDownloader) GetDownloadURL(youtubeURL string, quality YouTubeQua
 	}
 
 	GoLog("[YouTube] Got download URL from Cobalt (status: %s)\n", cobaltResp.Status)
-
 	return &cobaltResp, nil
 }
 
-// DownloadFile downloads the audio file from the given URL
+// requestSpotubeDL uses SpotubeDL as a Cobalt proxy (they handle auth to yt-dl.click instances).
+func (y *YouTubeDownloader) requestSpotubeDL(videoID, audioFormat, audioBitrate string) (*CobaltResponse, error) {
+	apiURL := fmt.Sprintf("https://spotubedl.com/api/download/%s?engine=v1&format=%s&quality=%s",
+		videoID, audioFormat, audioBitrate)
+
+	GoLog("[YouTube] Requesting from SpotubeDL: %s\n", apiURL)
+
+	req, err := http.NewRequest("GET", apiURL, nil)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create request: %w", err)
+	}
+
+	req.Header.Set("Accept", "application/json")
+
+	resp, err := DoRequestWithUserAgent(y.client, req)
+	if err != nil {
+		return nil, fmt.Errorf("spotubedl request failed: %w", err)
+	}
+	defer resp.Body.Close()
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read response: %w", err)
+	}
+
+	GoLog("[YouTube] SpotubeDL response status: %d\n", resp.StatusCode)
+
+	if resp.StatusCode != 200 {
+		return nil, fmt.Errorf("spotubedl returned status %d: %s", resp.StatusCode, string(body))
+	}
+
+	var result struct {
+		URL string `json:"url"`
+	}
+	if err := json.Unmarshal(body, &result); err != nil {
+		return nil, fmt.Errorf("failed to parse spotubedl response: %w", err)
+	}
+
+	if result.URL == "" {
+		return nil, fmt.Errorf("no download URL from spotubedl")
+	}
+
+	GoLog("[YouTube] Got download URL from SpotubeDL\n")
+	return &CobaltResponse{
+		Status: "tunnel",
+		URL:    result.URL,
+	}, nil
+}
+
 func (y *YouTubeDownloader) DownloadFile(downloadURL, outputPath string, outputFD int, itemID string) error {
 	ctx := context.Background()
 
@@ -265,19 +327,16 @@ func (y *YouTubeDownloader) DownloadFile(downloadURL, outputPath string, outputF
 	return nil
 }
 
-// BuildYouTubeSearchURL constructs a YouTube Music search URL for a track
 func BuildYouTubeSearchURL(trackName, artistName string) string {
 	query := fmt.Sprintf("%s %s official audio", artistName, trackName)
 	return fmt.Sprintf("https://music.youtube.com/search?q=%s", url.QueryEscape(query))
 }
 
-// BuildYouTubeWatchURL constructs a YouTube watch URL from a video ID
 func BuildYouTubeWatchURL(videoID string) string {
-	return fmt.Sprintf("https://www.youtube.com/watch?v=%s", videoID)
+	return fmt.Sprintf("https://music.youtube.com/watch?v=%s", videoID)
 }
 
-// isYouTubeVideoID checks if a string looks like a YouTube video ID
-// YouTube video IDs are exactly 11 characters, containing alphanumeric, - and _
+// isYouTubeVideoID checks if s is an 11-char YouTube video ID
 func isYouTubeVideoID(s string) bool {
 	if len(s) != 11 {
 		return false
@@ -290,7 +349,6 @@ func isYouTubeVideoID(s string) bool {
 	return true
 }
 
-// IsYouTubeURL checks if the given URL is a YouTube URL
 func IsYouTubeURL(urlStr string) bool {
 	lower := strings.ToLower(urlStr)
 	return strings.Contains(lower, "youtube.com") ||
@@ -298,9 +356,17 @@ func IsYouTubeURL(urlStr string) bool {
 		strings.Contains(lower, "music.youtube.com")
 }
 
-// ExtractYouTubeVideoID extracts the video ID from a YouTube URL
+// toYouTubeMusicURL converts any YouTube URL to music.youtube.com format.
+// YouTube Music URLs bypass the login requirement that affects regular YouTube videos on Cobalt.
+func toYouTubeMusicURL(rawURL string) string {
+	videoID, err := ExtractYouTubeVideoID(rawURL)
+	if err != nil {
+		return rawURL
+	}
+	return fmt.Sprintf("https://music.youtube.com/watch?v=%s", videoID)
+}
+
 func ExtractYouTubeVideoID(urlStr string) (string, error) {
-	// Handle youtu.be short URLs
 	if strings.Contains(urlStr, "youtu.be/") {
 		parts := strings.Split(urlStr, "youtu.be/")
 		if len(parts) >= 2 {
@@ -310,18 +376,17 @@ func ExtractYouTubeVideoID(urlStr string) (string, error) {
 		}
 	}
 
-	// Handle youtube.com URLs
 	parsed, err := url.Parse(urlStr)
 	if err != nil {
 		return "", fmt.Errorf("invalid URL: %w", err)
 	}
 
-	// Check for /watch?v= format
+	// /watch?v=
 	if v := parsed.Query().Get("v"); v != "" {
 		return v, nil
 	}
 
-	// Check for /embed/ format
+	// /embed/
 	if strings.Contains(parsed.Path, "/embed/") {
 		parts := strings.Split(parsed.Path, "/embed/")
 		if len(parts) >= 2 {
@@ -329,7 +394,7 @@ func ExtractYouTubeVideoID(urlStr string) (string, error) {
 		}
 	}
 
-	// Check for /v/ format
+	// /v/
 	if strings.Contains(parsed.Path, "/v/") {
 		parts := strings.Split(parsed.Path, "/v/")
 		if len(parts) >= 2 {
@@ -340,11 +405,9 @@ func ExtractYouTubeVideoID(urlStr string) (string, error) {
 	return "", fmt.Errorf("could not extract video ID from URL")
 }
 
-// downloadFromYouTube handles the complete download flow from YouTube
 func downloadFromYouTube(req DownloadRequest) (YouTubeDownloadResult, error) {
 	downloader := NewYouTubeDownloader()
 
-	// Determine quality from request
 	var quality YouTubeQuality
 	switch strings.ToLower(req.Quality) {
 	case "opus_256", "opus256", "opus":
@@ -355,19 +418,17 @@ func downloadFromYouTube(req DownloadRequest) (YouTubeDownloadResult, error) {
 		quality = YouTubeQualityMP3320 // Default to MP3 320kbps
 	}
 
-	// Try to get YouTube URL
-	// Priority: Direct YouTube Video ID -> Spotify ID -> Deezer ID -> ISRC
+	// URL lookup priority: YouTube video ID > Spotify ID > Deezer ID > ISRC
 	var youtubeURL string
 	var lookupErr error
 
-	// Method 0: Check if SpotifyID is actually a YouTube video ID (from YT Music extension)
-	// YouTube video IDs are 11 characters, alphanumeric with _ and -
+	// SpotifyID might actually be a YouTube video ID (from YT Music extension)
 	if req.SpotifyID != "" && isYouTubeVideoID(req.SpotifyID) {
 		youtubeURL = BuildYouTubeWatchURL(req.SpotifyID)
 		GoLog("[YouTube] SpotifyID appears to be YouTube video ID, using directly: %s\n", youtubeURL)
 	}
 
-	// Method 1: Try Spotify ID via SongLink (if it looks like a real Spotify ID)
+	// Try Spotify ID via SongLink
 	if youtubeURL == "" && req.SpotifyID != "" && !isYouTubeVideoID(req.SpotifyID) {
 		GoLog("[YouTube] Looking up YouTube URL via SongLink for Spotify ID: %s\n", req.SpotifyID)
 		songlink := NewSongLinkClient()
@@ -379,7 +440,7 @@ func downloadFromYouTube(req DownloadRequest) (YouTubeDownloadResult, error) {
 		}
 	}
 
-	// Method 2: Try Deezer ID if Spotify lookup failed or Spotify ID not available
+	// Try Deezer ID via SongLink
 	if youtubeURL == "" && req.DeezerID != "" {
 		GoLog("[YouTube] Looking up YouTube URL via SongLink for Deezer ID: %s\n", req.DeezerID)
 		songlink := NewSongLinkClient()
@@ -391,11 +452,10 @@ func downloadFromYouTube(req DownloadRequest) (YouTubeDownloadResult, error) {
 		}
 	}
 
-	// Method 3: Try ISRC if both Spotify and Deezer failed
+	// Try ISRC via SongLink
 	if youtubeURL == "" && req.ISRC != "" {
 		GoLog("[YouTube] Looking up YouTube URL via SongLink for ISRC: %s\n", req.ISRC)
 		songlink := NewSongLinkClient()
-		// First get Spotify ID from ISRC, then get YouTube URL
 		availability, isrcErr := songlink.CheckTrackAvailability("", req.ISRC)
 		if isrcErr == nil && availability.YouTube && availability.YouTubeURL != "" {
 			youtubeURL = availability.YouTubeURL
@@ -405,21 +465,18 @@ func downloadFromYouTube(req DownloadRequest) (YouTubeDownloadResult, error) {
 		}
 	}
 
-	// Fallback: if we couldn't get URL from SongLink, return error
-	// (Cobalt doesn't support search URLs, only direct video URLs)
+	// Cobalt requires direct video URLs, not search URLs
 	if youtubeURL == "" {
 		return YouTubeDownloadResult{}, fmt.Errorf("could not find YouTube URL for track: %s - %s (no Spotify/Deezer ID available or track not on YouTube)", req.ArtistName, req.TrackName)
 	}
 
 	GoLog("[YouTube] Requesting download from Cobalt for: %s\n", youtubeURL)
 
-	// Get download URL from Cobalt
 	cobaltResp, err := downloader.GetDownloadURL(youtubeURL, quality)
 	if err != nil {
 		return YouTubeDownloadResult{}, fmt.Errorf("failed to get download URL: %w", err)
 	}
 
-	// Determine file extension based on quality
 	var ext string
 	var format string
 	var bitrate int
@@ -434,8 +491,7 @@ func downloadFromYouTube(req DownloadRequest) (YouTubeDownloadResult, error) {
 		bitrate = 320
 	}
 
-	// Build filename
-	filename := buildFilenameFromTemplate(req.FilenameFormat, map[string]interface{}{
+	filename := buildFilenameFromTemplate(req.FilenameFormat, map[string]any{
 		"title":  req.TrackName,
 		"artist": req.ArtistName,
 		"album":  req.AlbumName,
@@ -445,7 +501,6 @@ func downloadFromYouTube(req DownloadRequest) (YouTubeDownloadResult, error) {
 	})
 	filename = sanitizeFilename(filename) + ext
 
-	// Determine output path
 	var outputPath string
 	isSafOutput := isFDOutput(req.OutputFD) || strings.TrimSpace(req.OutputPath) != ""
 	if isSafOutput {
@@ -459,7 +514,7 @@ func downloadFromYouTube(req DownloadRequest) (YouTubeDownloadResult, error) {
 
 	GoLog("[YouTube] Downloading to: %s\n", outputPath)
 
-	// Start parallel fetch for cover art and lyrics while downloading
+	// Parallel fetch cover art + lyrics
 	var parallelResult *ParallelDownloadResult
 	if req.EmbedLyrics || req.CoverURL != "" {
 		GoLog("[YouTube] Starting parallel fetch for cover and lyrics...\n")
@@ -474,12 +529,10 @@ func downloadFromYouTube(req DownloadRequest) (YouTubeDownloadResult, error) {
 		)
 	}
 
-	// Download the file
 	if err := downloader.DownloadFile(cobaltResp.URL, outputPath, req.OutputFD, req.ItemID); err != nil {
 		return YouTubeDownloadResult{}, fmt.Errorf("download failed: %w", err)
 	}
 
-	// Extract lyrics LRC if available
 	lyricsLRC := ""
 	var coverData []byte
 	if parallelResult != nil {

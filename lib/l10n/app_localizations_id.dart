@@ -2849,4 +2849,63 @@ class AppLocalizationsId extends AppLocalizations {
 
   @override
   String get cacheRefreshStats => 'Segarkan statistik';
+
+  @override
+  String get trackSaveCoverArt => 'Simpan Cover Art';
+
+  @override
+  String get trackSaveCoverArtSubtitle =>
+      'Simpan cover album sebagai file .jpg';
+
+  @override
+  String get trackSaveLyrics => 'Simpan Lirik (.lrc)';
+
+  @override
+  String get trackSaveLyricsSubtitle =>
+      'Ambil dan simpan lirik sebagai file .lrc';
+
+  @override
+  String get trackReEnrich => 'Perkaya Ulang Metadata';
+
+  @override
+  String get trackReEnrichSubtitle =>
+      'Tanamkan ulang metadata tanpa mengunduh ulang';
+
+  @override
+  String get trackReEnrichOnlineSubtitle =>
+      'Cari metadata dari internet dan tanamkan ke file';
+
+  @override
+  String get trackEditMetadata => 'Edit Metadata';
+
+  @override
+  String trackCoverSaved(String fileName) {
+    return 'Cover art disimpan ke $fileName';
+  }
+
+  @override
+  String get trackCoverNoSource => 'Tidak ada sumber cover art';
+
+  @override
+  String trackLyricsSaved(String fileName) {
+    return 'Lirik disimpan ke $fileName';
+  }
+
+  @override
+  String get trackReEnrichProgress => 'Memperkaya ulang metadata...';
+
+  @override
+  String get trackReEnrichSearching => 'Mencari metadata dari internet...';
+
+  @override
+  String get trackReEnrichSuccess => 'Metadata berhasil diperkaya ulang';
+
+  @override
+  String get trackReEnrichFfmpegFailed =>
+      'Gagal menanamkan metadata via FFmpeg';
+
+  @override
+  String trackSaveFailed(String error) {
+    return 'Gagal: $error';
+  }
 }

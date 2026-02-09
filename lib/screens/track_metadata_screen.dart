@@ -11,6 +11,7 @@ import 'package:url_launcher/url_launcher.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:spotiflac_android/providers/download_queue_provider.dart';
 import 'package:spotiflac_android/services/platform_bridge.dart';
+import 'package:spotiflac_android/services/ffmpeg_service.dart';
 import 'package:spotiflac_android/l10n/l10n.dart';
 
 class TrackMetadataScreen extends ConsumerStatefulWidget {
@@ -35,6 +36,7 @@ class _TrackMetadataScreenState extends ConsumerState<TrackMetadataScreen> {
   bool _lyricsEmbedded = false;  // Track if lyrics are embedded in file
   bool _isEmbedding = false;     // Track embed operation in progress
   bool _isInstrumental = false;  // Track if detected as instrumental
+  Map<String, dynamic>? _editedMetadata; // Overrides after metadata edit
   final ScrollController _scrollController = ScrollController();
   static final RegExp _lrcTimestampPattern =
       RegExp(r'^\[\d{2}:\d{2}\.\d{2,3}\]');
@@ -117,17 +119,35 @@ class _TrackMetadataScreenState extends ConsumerState<TrackMetadataScreen> {
   LocalLibraryItem? get _localLibraryItem => widget.localItem;
   
   String get _itemId => _isLocalItem ? _localLibraryItem!.id : _downloadItem!.id;
-  String get trackName => _isLocalItem ? _localLibraryItem!.trackName : _downloadItem!.trackName;
-  String get artistName => _isLocalItem ? _localLibraryItem!.artistName : _downloadItem!.artistName;
-  String get albumName => _isLocalItem ? _localLibraryItem!.albumName : _downloadItem!.albumName;
-  String? get albumArtist => _normalizeOptionalString(_isLocalItem ? _localLibraryItem!.albumArtist : _downloadItem!.albumArtist);
-  int? get trackNumber => _isLocalItem ? _localLibraryItem!.trackNumber : _downloadItem!.trackNumber;
-  int? get discNumber => _isLocalItem ? _localLibraryItem!.discNumber : _downloadItem!.discNumber;
-  String? get releaseDate => _isLocalItem ? _localLibraryItem!.releaseDate : _downloadItem!.releaseDate;
-  String? get isrc => _isLocalItem ? _localLibraryItem!.isrc : _downloadItem!.isrc;
-  String? get genre => _isLocalItem ? _localLibraryItem!.genre : _downloadItem!.genre;
-  String? get label => _isLocalItem ? null : _downloadItem!.label;
-  String? get copyright => _isLocalItem ? null : _downloadItem!.copyright;
+  String get trackName => _editedMetadata?['title']?.toString() ?? (_isLocalItem ? _localLibraryItem!.trackName : _downloadItem!.trackName);
+  String get artistName => _editedMetadata?['artist']?.toString() ?? (_isLocalItem ? _localLibraryItem!.artistName : _downloadItem!.artistName);
+  String get albumName => _editedMetadata?['album']?.toString() ?? (_isLocalItem ? _localLibraryItem!.albumName : _downloadItem!.albumName);
+  String? get albumArtist {
+    final edited = _editedMetadata?['album_artist']?.toString();
+    if (edited != null && edited.isNotEmpty) return edited;
+    return _normalizeOptionalString(_isLocalItem ? _localLibraryItem!.albumArtist : _downloadItem!.albumArtist);
+  }
+  int? get trackNumber {
+    final edited = _editedMetadata?['track_number'];
+    if (edited != null) {
+      final v = int.tryParse(edited.toString());
+      if (v != null && v > 0) return v;
+    }
+    return _isLocalItem ? _localLibraryItem!.trackNumber : _downloadItem!.trackNumber;
+  }
+  int? get discNumber {
+    final edited = _editedMetadata?['disc_number'];
+    if (edited != null) {
+      final v = int.tryParse(edited.toString());
+      if (v != null && v > 0) return v;
+    }
+    return _isLocalItem ? _localLibraryItem!.discNumber : _downloadItem!.discNumber;
+  }
+  String? get releaseDate => _editedMetadata?['date']?.toString() ?? (_isLocalItem ? _localLibraryItem!.releaseDate : _downloadItem!.releaseDate);
+  String? get isrc => _editedMetadata?['isrc']?.toString() ?? (_isLocalItem ? _localLibraryItem!.isrc : _downloadItem!.isrc);
+  String? get genre => _editedMetadata?['genre']?.toString() ?? (_isLocalItem ? _localLibraryItem!.genre : _downloadItem!.genre);
+  String? get label => _editedMetadata?['label']?.toString() ?? (_isLocalItem ? null : _downloadItem!.label);
+  String? get copyright => _editedMetadata?['copyright']?.toString() ?? (_isLocalItem ? null : _downloadItem!.copyright);
   int? get duration => _isLocalItem ? _localLibraryItem!.duration : _downloadItem!.duration;
   int? get bitDepth => _isLocalItem ? _localLibraryItem!.bitDepth : _downloadItem!.bitDepth;
   int? get sampleRate => _isLocalItem ? _localLibraryItem!.sampleRate : _downloadItem!.sampleRate;
@@ -1083,6 +1103,380 @@ class _TrackMetadataScreenState extends ConsumerState<TrackMetadataScreen> {
     }
   }
 
+  String _buildSaveBaseName() {
+    final artist = artistName.replaceAll(RegExp(r'[\\/:*?"<>|]'), '_');
+    final track = trackName.replaceAll(RegExp(r'[\\/:*?"<>|]'), '_');
+    return '$artist - $track';
+  }
+
+  String _getFileDirectory() {
+    if (isContentUri(cleanFilePath)) {
+      // SAF URIs don't have a filesystem parent directory
+      return '';
+    }
+    final file = File(cleanFilePath);
+    return file.parent.path;
+  }
+
+  bool get _isSafFile => isContentUri(cleanFilePath);
+
+  Future<void> _saveCoverArt() async {
+    try {
+      final baseName = _buildSaveBaseName();
+
+      if (_isSafFile) {
+        // SAF file: save to temp, then copy to SAF tree
+        final tempDir = await Directory.systemTemp.createTemp('cover_');
+        final tempOutput = '${tempDir.path}${Platform.pathSeparator}$baseName.jpg';
+
+        Map<String, dynamic> result;
+        if (_coverUrl != null && _coverUrl!.isNotEmpty) {
+          result = await PlatformBridge.downloadCoverToFile(
+            _coverUrl!,
+            tempOutput,
+            maxQuality: true,
+          );
+        } else if (_fileExists) {
+          result = await PlatformBridge.extractCoverToFile(
+            cleanFilePath,
+            tempOutput,
+          );
+        } else {
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(content: Text(context.l10n.trackCoverNoSource)),
+            );
+          }
+          return;
+        }
+
+        if (result['error'] != null) {
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(content: Text(context.l10n.trackSaveFailed(result['error'].toString()))),
+            );
+          }
+          try { await Directory(tempDir.path).delete(recursive: true); } catch (_) {}
+          return;
+        }
+
+        // Write temp file to SAF tree
+        final treeUri = _downloadItem?.downloadTreeUri;
+        final relativeDir = _downloadItem?.safRelativeDir ?? '';
+        if (treeUri != null && treeUri.isNotEmpty) {
+          final safUri = await PlatformBridge.createSafFileFromPath(
+            treeUri: treeUri,
+            relativeDir: relativeDir,
+            fileName: '$baseName.jpg',
+            mimeType: 'image/jpeg',
+            srcPath: tempOutput,
+          );
+          try { await Directory(tempDir.path).delete(recursive: true); } catch (_) {}
+          if (mounted) {
+            if (safUri != null) {
+              ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(content: Text(context.l10n.trackCoverSaved(baseName))),
+              );
+            } else {
+              ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(content: Text(context.l10n.trackSaveFailed('Failed to write to storage'))),
+              );
+            }
+          }
+        } else {
+          // No SAF tree info, keep in temp
+          try { await Directory(tempDir.path).delete(recursive: true); } catch (_) {}
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(content: Text(context.l10n.trackSaveFailed('No storage access'))),
+            );
+          }
+        }
+        return;
+      }
+
+      // Regular file path
+      final dir = _getFileDirectory();
+      final outputPath = '$dir${Platform.pathSeparator}$baseName.jpg';
+
+      Map<String, dynamic> result;
+      if (_coverUrl != null && _coverUrl!.isNotEmpty) {
+        result = await PlatformBridge.downloadCoverToFile(
+          _coverUrl!,
+          outputPath,
+          maxQuality: true,
+        );
+      } else if (_fileExists) {
+        result = await PlatformBridge.extractCoverToFile(
+          cleanFilePath,
+          outputPath,
+        );
+      } else {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text(context.l10n.trackCoverNoSource)),
+          );
+        }
+        return;
+      }
+
+      if (mounted) {
+        if (result['error'] != null) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text(context.l10n.trackSaveFailed(result['error'].toString()))),
+          );
+        } else {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text(context.l10n.trackCoverSaved(baseName))),
+          );
+        }
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(context.l10n.trackSaveFailed(e.toString()))),
+        );
+      }
+    }
+  }
+
+  Future<void> _saveLyrics() async {
+    try {
+      final baseName = _buildSaveBaseName();
+      final durationMs = (duration ?? 0) * 1000;
+
+      if (_isSafFile) {
+        // SAF file: save to temp, then copy to SAF tree
+        final tempDir = await Directory.systemTemp.createTemp('lyrics_');
+        final tempOutput = '${tempDir.path}${Platform.pathSeparator}$baseName.lrc';
+
+        final result = await PlatformBridge.fetchAndSaveLyrics(
+          trackName: trackName,
+          artistName: artistName,
+          spotifyId: _spotifyId ?? '',
+          durationMs: durationMs,
+          outputPath: tempOutput,
+        );
+
+        if (result['error'] != null) {
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(content: Text(context.l10n.trackSaveFailed(result['error'].toString()))),
+            );
+          }
+          try { await Directory(tempDir.path).delete(recursive: true); } catch (_) {}
+          return;
+        }
+
+        // Write temp file to SAF tree
+        final treeUri = _downloadItem?.downloadTreeUri;
+        final relativeDir = _downloadItem?.safRelativeDir ?? '';
+        if (treeUri != null && treeUri.isNotEmpty) {
+          final safUri = await PlatformBridge.createSafFileFromPath(
+            treeUri: treeUri,
+            relativeDir: relativeDir,
+            fileName: '$baseName.lrc',
+            mimeType: 'text/plain',
+            srcPath: tempOutput,
+          );
+          try { await Directory(tempDir.path).delete(recursive: true); } catch (_) {}
+          if (mounted) {
+            if (safUri != null) {
+              ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(content: Text(context.l10n.trackLyricsSaved(baseName))),
+              );
+            } else {
+              ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(content: Text(context.l10n.trackSaveFailed('Failed to write to storage'))),
+              );
+            }
+          }
+        } else {
+          try { await Directory(tempDir.path).delete(recursive: true); } catch (_) {}
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(content: Text(context.l10n.trackSaveFailed('No storage access'))),
+            );
+          }
+        }
+        return;
+      }
+
+      // Regular file path
+      final dir = _getFileDirectory();
+      final outputPath = '$dir${Platform.pathSeparator}$baseName.lrc';
+
+      final result = await PlatformBridge.fetchAndSaveLyrics(
+        trackName: trackName,
+        artistName: artistName,
+        spotifyId: _spotifyId ?? '',
+        durationMs: durationMs,
+        outputPath: outputPath,
+      );
+
+      if (mounted) {
+        if (result['error'] != null) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text(context.l10n.trackSaveFailed(result['error'].toString()))),
+          );
+        } else {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text(context.l10n.trackLyricsSaved(baseName))),
+          );
+        }
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(context.l10n.trackSaveFailed(e.toString()))),
+        );
+      }
+    }
+  }
+
+  Future<void> _reEnrichMetadata() async {
+    if (!_fileExists) return;
+
+    try {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(context.l10n.trackReEnrichSearching)),
+      );
+
+      final durationMs = (duration ?? 0) * 1000;
+      final request = <String, dynamic>{
+        'file_path': cleanFilePath,
+        'cover_url': _coverUrl ?? '',
+        'max_quality': true,
+        'embed_lyrics': true,
+        'spotify_id': _spotifyId ?? '',
+        'track_name': trackName,
+        'artist_name': artistName,
+        'album_name': albumName,
+        'album_artist': albumArtist ?? artistName,
+        'track_number': trackNumber ?? 0,
+        'disc_number': discNumber ?? 0,
+        'release_date': releaseDate ?? '',
+        'isrc': isrc ?? '',
+        'genre': genre ?? '',
+        'label': label ?? '',
+        'copyright': copyright ?? '',
+        'duration_ms': durationMs,
+        'search_online': true,
+      };
+
+      final result = await PlatformBridge.reEnrichFile(request);
+      final method = result['method'] as String?;
+
+      // Update local UI state with enriched metadata from online search
+      final enriched = result['enriched_metadata'] as Map<String, dynamic>?;
+      if (enriched != null && mounted) {
+        setState(() {
+          _editedMetadata = {
+            'title': enriched['track_name'] ?? trackName,
+            'artist': enriched['artist_name'] ?? artistName,
+            'album': enriched['album_name'] ?? albumName,
+            'album_artist': enriched['album_artist'] ?? albumArtist,
+            'date': enriched['release_date'] ?? releaseDate,
+            'track_number': enriched['track_number'] ?? trackNumber,
+            'disc_number': enriched['disc_number'] ?? discNumber,
+            'isrc': enriched['isrc'] ?? isrc,
+            'genre': enriched['genre'] ?? genre,
+            'label': enriched['label'] ?? label,
+            'copyright': enriched['copyright'] ?? copyright,
+          };
+        });
+      }
+
+      if (method == 'native') {
+        // FLAC - handled natively by Go (SAF write-back handled in Kotlin)
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text(context.l10n.trackReEnrichSuccess)),
+          );
+        }
+      } else if (method == 'ffmpeg') {
+        // MP3/Opus - need FFmpeg from Dart side
+        // For SAF files, Kotlin returns temp_path + saf_uri
+        final tempPath = result['temp_path'] as String?;
+        final safUri = result['saf_uri'] as String?;
+        final ffmpegTarget = tempPath ?? cleanFilePath;
+
+        final coverPath = result['cover_path'] as String?;
+        final metadata = (result['metadata'] as Map<String, dynamic>?)
+            ?.map((k, v) => MapEntry(k, v.toString()));
+        final lower = cleanFilePath.toLowerCase();
+
+        String? ffmpegResult;
+        if (lower.endsWith('.mp3')) {
+          ffmpegResult = await FFmpegService.embedMetadataToMp3(
+            mp3Path: ffmpegTarget,
+            coverPath: coverPath,
+            metadata: metadata,
+          );
+        } else if (lower.endsWith('.opus') || lower.endsWith('.ogg')) {
+          ffmpegResult = await FFmpegService.embedMetadataToOpus(
+            opusPath: ffmpegTarget,
+            coverPath: coverPath,
+            metadata: metadata,
+          );
+        }
+
+        // For SAF files, copy processed temp file back
+        if (ffmpegResult != null && tempPath != null && safUri != null) {
+          final ok = await PlatformBridge.writeTempToSaf(ffmpegResult, safUri);
+          if (!ok && mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(content: Text(context.l10n.trackSaveFailed('Failed to write back to storage'))),
+            );
+            // Cleanup temp files
+            if (coverPath != null && coverPath.isNotEmpty) {
+              try { await File(coverPath).delete(); } catch (_) {}
+            }
+            if (tempPath.isNotEmpty) {
+              try { await File(tempPath).delete(); } catch (_) {}
+            }
+            return;
+          }
+        }
+
+        // Cleanup temp files
+        if (tempPath != null && tempPath.isNotEmpty) {
+          try { await File(tempPath).delete(); } catch (_) {}
+        }
+
+        if (mounted) {
+          if (ffmpegResult != null) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(content: Text(context.l10n.trackReEnrichSuccess)),
+            );
+          } else {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(content: Text(context.l10n.trackReEnrichFfmpegFailed)),
+            );
+          }
+        }
+
+        // Cleanup temp cover from Go backend
+        if (coverPath != null && coverPath.isNotEmpty) {
+          try { await File(coverPath).delete(); } catch (_) {}
+        }
+      } else {
+        if (mounted) {
+          final error = result['error']?.toString() ?? 'Unknown error';
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text(context.l10n.trackSaveFailed(error))),
+          );
+        }
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(context.l10n.trackSaveFailed(e.toString()))),
+        );
+      }
+    }
+  }
+
   String _cleanLrcForDisplay(String lrc) {
     final lines = lrc.split('\n');
     final cleanLines = <String>[];
@@ -1148,8 +1542,13 @@ class _TrackMetadataScreenState extends ConsumerState<TrackMetadataScreen> {
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
       ),
+      isScrollControlled: true,
+      constraints: BoxConstraints(
+        maxHeight: MediaQuery.of(context).size.height * 0.7,
+      ),
       builder: (context) => SafeArea(
-        child: Column(
+        child: SingleChildScrollView(
+          child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
             const SizedBox(height: 8),
@@ -1170,6 +1569,46 @@ class _TrackMetadataScreenState extends ConsumerState<TrackMetadataScreen> {
                 _copyToClipboard(context, cleanFilePath);
               },
             ),
+            if (_fileExists)
+              ListTile(
+                leading: const Icon(Icons.edit_outlined),
+                title: Text(context.l10n.trackEditMetadata),
+                onTap: () {
+                  Navigator.pop(context);
+                  _showEditMetadataSheet(context, ref, colorScheme);
+                },
+              ),
+            if (!_isLocalItem && (_coverUrl != null || _fileExists))
+              ListTile(
+                leading: const Icon(Icons.image_outlined),
+                title: Text(context.l10n.trackSaveCoverArt),
+                subtitle: Text(context.l10n.trackSaveCoverArtSubtitle),
+                onTap: () {
+                  Navigator.pop(context);
+                  _saveCoverArt();
+                },
+              ),
+            if (!_isLocalItem)
+              ListTile(
+                leading: const Icon(Icons.lyrics_outlined),
+                title: Text(context.l10n.trackSaveLyrics),
+                subtitle: Text(context.l10n.trackSaveLyricsSubtitle),
+                onTap: () {
+                  Navigator.pop(context);
+                  _saveLyrics();
+                },
+              ),
+            if (_fileExists)
+              ListTile(
+                leading: const Icon(Icons.travel_explore),
+                title: Text(context.l10n.trackReEnrich),
+                subtitle: Text(context.l10n.trackReEnrichOnlineSubtitle),
+                onTap: () {
+                  Navigator.pop(context);
+                  _reEnrichMetadata();
+                },
+              ),
+            const Divider(height: 1),
             ListTile(
               leading: const Icon(Icons.share),
               title: Text(context.l10n.trackMetadataShare),
@@ -1189,8 +1628,73 @@ class _TrackMetadataScreenState extends ConsumerState<TrackMetadataScreen> {
             const SizedBox(height: 16),
           ],
         ),
+        ),
       ),
     );
+  }
+
+  void _showEditMetadataSheet(BuildContext context, WidgetRef ref, ColorScheme colorScheme) async {
+    // Read current metadata from file, fall back to item data on failure
+    Map<String, dynamic>? fileMetadata;
+    try {
+      final result = await PlatformBridge.readFileMetadata(cleanFilePath);
+      if (result['error'] == null) {
+        fileMetadata = result;
+      }
+    } catch (e) {
+      debugPrint('readFileMetadata failed, using item data: $e');
+    }
+
+    // Build initial values map — prefer file metadata, fall back to item data
+    String val(String key, String? fallback) {
+      final v = fileMetadata?[key]?.toString();
+      return (v != null && v.isNotEmpty) ? v : (fallback ?? '');
+    }
+
+    final initialValues = <String, String>{
+      'title': val('title', trackName),
+      'artist': val('artist', artistName),
+      'album': val('album', albumName),
+      'album_artist': val('album_artist', albumArtist),
+      'date': val('date', releaseDate),
+      'track_number': (fileMetadata?['track_number'] ?? trackNumber ?? '').toString(),
+      'disc_number': (fileMetadata?['disc_number'] ?? discNumber ?? '').toString(),
+      'genre': val('genre', genre),
+      'isrc': val('isrc', isrc),
+      'label': val('label', label),
+      'copyright': val('copyright', copyright),
+      'composer': fileMetadata?['composer']?.toString() ?? '',
+      'comment': fileMetadata?['comment']?.toString() ?? '',
+    };
+
+    if (!context.mounted) return;
+
+    final saved = await showModalBottomSheet<bool>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: colorScheme.surface,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
+      ),
+      builder: (sheetContext) => _EditMetadataSheet(
+        colorScheme: colorScheme,
+        initialValues: initialValues,
+        filePath: cleanFilePath,
+      ),
+    );
+
+    if (saved == true && mounted) {
+      ScaffoldMessenger.of(this.context).showSnackBar(
+        const SnackBar(content: Text('Metadata saved successfully')),
+      );
+      // Re-read metadata from file to refresh the display
+      try {
+        final refreshed = await PlatformBridge.readFileMetadata(cleanFilePath);
+        setState(() => _editedMetadata = refreshed);
+      } catch (_) {
+        setState(() {});
+      }
+    }
   }
 
   void _confirmDelete(BuildContext context, WidgetRef ref, ColorScheme colorScheme) {
@@ -1324,14 +1828,377 @@ class _TrackMetadataScreenState extends ConsumerState<TrackMetadataScreen> {
   Color _getServiceColor(String service, ColorScheme colorScheme) {
     switch (service.toLowerCase()) {
       case 'tidal':
-        return const Color(0xFF0077B5); // Tidal blue (darker, more readable)
+        return const Color(0xFF0077B5);
       case 'qobuz':
-        return const Color(0xFF0052CC); // Qobuz blue
+        return const Color(0xFF0052CC);
       case 'amazon':
-        return const Color(0xFFFF9900); // Amazon orange
+        return const Color(0xFFFF9900);
       default:
         return colorScheme.primary;
     }
+  }
+}
+
+class _EditMetadataSheet extends StatefulWidget {
+  final ColorScheme colorScheme;
+  final Map<String, String> initialValues;
+  final String filePath;
+
+  const _EditMetadataSheet({
+    required this.colorScheme,
+    required this.initialValues,
+    required this.filePath,
+  });
+
+  @override
+  State<_EditMetadataSheet> createState() => _EditMetadataSheetState();
+}
+
+class _EditMetadataSheetState extends State<_EditMetadataSheet> {
+  bool _saving = false;
+  bool _showAdvanced = false;
+
+  late final TextEditingController _titleCtrl;
+  late final TextEditingController _artistCtrl;
+  late final TextEditingController _albumCtrl;
+  late final TextEditingController _albumArtistCtrl;
+  late final TextEditingController _dateCtrl;
+  late final TextEditingController _trackNumCtrl;
+  late final TextEditingController _discNumCtrl;
+  late final TextEditingController _genreCtrl;
+  late final TextEditingController _isrcCtrl;
+  late final TextEditingController _labelCtrl;
+  late final TextEditingController _copyrightCtrl;
+  late final TextEditingController _composerCtrl;
+  late final TextEditingController _commentCtrl;
+
+  @override
+  void initState() {
+    super.initState();
+    final v = widget.initialValues;
+    _titleCtrl = TextEditingController(text: v['title'] ?? '');
+    _artistCtrl = TextEditingController(text: v['artist'] ?? '');
+    _albumCtrl = TextEditingController(text: v['album'] ?? '');
+    _albumArtistCtrl = TextEditingController(text: v['album_artist'] ?? '');
+    _dateCtrl = TextEditingController(text: v['date'] ?? '');
+    _trackNumCtrl = TextEditingController(text: v['track_number'] ?? '');
+    _discNumCtrl = TextEditingController(text: v['disc_number'] ?? '');
+    _genreCtrl = TextEditingController(text: v['genre'] ?? '');
+    _isrcCtrl = TextEditingController(text: v['isrc'] ?? '');
+    _labelCtrl = TextEditingController(text: v['label'] ?? '');
+    _copyrightCtrl = TextEditingController(text: v['copyright'] ?? '');
+    _composerCtrl = TextEditingController(text: v['composer'] ?? '');
+    _commentCtrl = TextEditingController(text: v['comment'] ?? '');
+  }
+
+  @override
+  void dispose() {
+    _titleCtrl.dispose();
+    _artistCtrl.dispose();
+    _albumCtrl.dispose();
+    _albumArtistCtrl.dispose();
+    _dateCtrl.dispose();
+    _trackNumCtrl.dispose();
+    _discNumCtrl.dispose();
+    _genreCtrl.dispose();
+    _isrcCtrl.dispose();
+    _labelCtrl.dispose();
+    _copyrightCtrl.dispose();
+    _composerCtrl.dispose();
+    _commentCtrl.dispose();
+    super.dispose();
+  }
+
+  Future<void> _save() async {
+    setState(() => _saving = true);
+
+    final metadata = <String, String>{
+      'title': _titleCtrl.text,
+      'artist': _artistCtrl.text,
+      'album': _albumCtrl.text,
+      'album_artist': _albumArtistCtrl.text,
+      'date': _dateCtrl.text,
+      'track_number': _trackNumCtrl.text,
+      'disc_number': _discNumCtrl.text,
+      'genre': _genreCtrl.text,
+      'isrc': _isrcCtrl.text,
+      'label': _labelCtrl.text,
+      'copyright': _copyrightCtrl.text,
+      'composer': _composerCtrl.text,
+      'comment': _commentCtrl.text,
+    };
+
+    try {
+      final result = await PlatformBridge.editFileMetadata(
+        widget.filePath,
+        metadata,
+      );
+
+      if (result['error'] != null) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('${result['error']}')),
+          );
+        }
+        setState(() => _saving = false);
+        return;
+      }
+
+      final method = result['method'] as String?;
+
+      if (method == 'ffmpeg') {
+        // MP3/Opus: use FFmpeg to write metadata
+        // For SAF files, Kotlin returns temp_path + saf_uri
+        final tempPath = result['temp_path'] as String?;
+        final safUri = result['saf_uri'] as String?;
+        final ffmpegTarget = tempPath ?? widget.filePath;
+
+        final lower = widget.filePath.toLowerCase();
+        final isMp3 = lower.endsWith('.mp3');
+        final isOpus = lower.endsWith('.opus') || lower.endsWith('.ogg');
+
+        final vorbisMap = <String, String>{};
+        if (metadata['title']?.isNotEmpty == true) vorbisMap['TITLE'] = metadata['title']!;
+        if (metadata['artist']?.isNotEmpty == true) vorbisMap['ARTIST'] = metadata['artist']!;
+        if (metadata['album']?.isNotEmpty == true) vorbisMap['ALBUM'] = metadata['album']!;
+        if (metadata['album_artist']?.isNotEmpty == true) vorbisMap['ALBUMARTIST'] = metadata['album_artist']!;
+        if (metadata['date']?.isNotEmpty == true) vorbisMap['DATE'] = metadata['date']!;
+        if (metadata['track_number']?.isNotEmpty == true && metadata['track_number'] != '0') {
+          vorbisMap['TRACKNUMBER'] = metadata['track_number']!;
+        }
+        if (metadata['disc_number']?.isNotEmpty == true && metadata['disc_number'] != '0') {
+          vorbisMap['DISCNUMBER'] = metadata['disc_number']!;
+        }
+        if (metadata['genre']?.isNotEmpty == true) vorbisMap['GENRE'] = metadata['genre']!;
+        if (metadata['isrc']?.isNotEmpty == true) vorbisMap['ISRC'] = metadata['isrc']!;
+        if (metadata['label']?.isNotEmpty == true) vorbisMap['ORGANIZATION'] = metadata['label']!;
+        if (metadata['copyright']?.isNotEmpty == true) vorbisMap['COPYRIGHT'] = metadata['copyright']!;
+        if (metadata['composer']?.isNotEmpty == true) vorbisMap['COMPOSER'] = metadata['composer']!;
+        if (metadata['comment']?.isNotEmpty == true) vorbisMap['COMMENT'] = metadata['comment']!;
+
+        // Extract existing cover art before re-embedding metadata
+        String? existingCoverPath;
+        try {
+          final tempDir = await Directory.systemTemp.createTemp('cover_');
+          final coverOutput = '${tempDir.path}${Platform.pathSeparator}cover.jpg';
+          final coverResult = await PlatformBridge.extractCoverToFile(ffmpegTarget, coverOutput);
+          if (coverResult['error'] == null) {
+            existingCoverPath = coverOutput;
+          }
+        } catch (_) {
+          // No cover to preserve, continue without
+        }
+
+        String? ffmpegResult;
+        if (isMp3) {
+          ffmpegResult = await FFmpegService.embedMetadataToMp3(
+            mp3Path: ffmpegTarget,
+            coverPath: existingCoverPath,
+            metadata: vorbisMap,
+          );
+        } else if (isOpus) {
+          ffmpegResult = await FFmpegService.embedMetadataToOpus(
+            opusPath: ffmpegTarget,
+            coverPath: existingCoverPath,
+            metadata: vorbisMap,
+          );
+        }
+
+        // Cleanup temp cover
+        if (existingCoverPath != null) {
+          try { await File(existingCoverPath).delete(); } catch (_) {}
+        }
+
+        if (ffmpegResult == null) {
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(content: Text('Failed to save metadata via FFmpeg')),
+            );
+          }
+          setState(() => _saving = false);
+          return;
+        }
+
+        // For SAF files, copy the processed temp file back
+        if (tempPath != null && safUri != null) {
+          final ok = await PlatformBridge.writeTempToSaf(ffmpegResult, safUri);
+          if (!ok && mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(content: Text('Failed to write metadata back to storage')),
+            );
+            setState(() => _saving = false);
+            return;
+          }
+        }
+      }
+
+      if (mounted) {
+        Navigator.pop(context, true);
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Failed to save metadata: $e')),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _saving = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = widget.colorScheme;
+
+    return Padding(
+      padding: EdgeInsets.only(
+        bottom: MediaQuery.of(context).viewInsets.bottom,
+      ),
+      child: DraggableScrollableSheet(
+        initialChildSize: 0.85,
+        minChildSize: 0.5,
+        maxChildSize: 0.95,
+        expand: false,
+        builder: (context, scrollController) => Column(
+          children: [
+            // Handle bar
+            Padding(
+              padding: const EdgeInsets.only(top: 12, bottom: 8),
+              child: Container(
+                width: 40,
+                height: 4,
+                decoration: BoxDecoration(
+                  color: cs.onSurfaceVariant.withValues(alpha: 0.4),
+                  borderRadius: BorderRadius.circular(2),
+                ),
+              ),
+            ),
+            // Title row
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 24),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: Text(
+                      'Edit Metadata',
+                      style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                  ),
+                  if (_saving)
+                    const SizedBox(
+                      width: 24,
+                      height: 24,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    )
+                  else
+                    FilledButton(
+                      onPressed: _save,
+                      child: const Text('Save'),
+                    ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 12),
+            // Fields
+            Expanded(
+              child: ListView(
+                controller: scrollController,
+                padding: const EdgeInsets.symmetric(horizontal: 24),
+                children: [
+                  _field('Title', _titleCtrl),
+                  _field('Artist', _artistCtrl),
+                  _field('Album', _albumCtrl),
+                  _field('Album Artist', _albumArtistCtrl),
+                  _field('Date', _dateCtrl, hint: 'YYYY-MM-DD or YYYY'),
+                  Row(
+                    children: [
+                      Expanded(child: _field('Track #', _trackNumCtrl, keyboard: TextInputType.number)),
+                      const SizedBox(width: 12),
+                      Expanded(child: _field('Disc #', _discNumCtrl, keyboard: TextInputType.number)),
+                    ],
+                  ),
+                  _field('Genre', _genreCtrl),
+                  _field('ISRC', _isrcCtrl),
+                  // Advanced fields toggle
+                  Padding(
+                    padding: const EdgeInsets.only(top: 8, bottom: 4),
+                    child: InkWell(
+                      onTap: () => setState(() => _showAdvanced = !_showAdvanced),
+                      borderRadius: BorderRadius.circular(8),
+                      child: Padding(
+                        padding: const EdgeInsets.symmetric(vertical: 8),
+                        child: Row(
+                          children: [
+                            Icon(
+                              _showAdvanced ? Icons.expand_less : Icons.expand_more,
+                              size: 20,
+                              color: cs.onSurfaceVariant,
+                            ),
+                            const SizedBox(width: 8),
+                            Text(
+                              'Advanced',
+                              style: Theme.of(context).textTheme.labelLarge?.copyWith(
+                                color: cs.onSurfaceVariant,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ),
+                  if (_showAdvanced) ...[
+                    _field('Label', _labelCtrl),
+                    _field('Copyright', _copyrightCtrl),
+                    _field('Composer', _composerCtrl),
+                    _field('Comment', _commentCtrl, maxLines: 3),
+                  ],
+                  const SizedBox(height: 24),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _field(
+    String label,
+    TextEditingController controller, {
+    String? hint,
+    TextInputType? keyboard,
+    int maxLines = 1,
+  }) {
+    final cs = widget.colorScheme;
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 12),
+      child: TextField(
+        controller: controller,
+        keyboardType: keyboard,
+        maxLines: maxLines,
+        decoration: InputDecoration(
+          labelText: label,
+          hintText: hint,
+          filled: true,
+          fillColor: cs.surfaceContainerHighest.withValues(alpha: 0.5),
+          border: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(12),
+            borderSide: BorderSide(color: cs.outlineVariant.withValues(alpha: 0.5)),
+          ),
+          enabledBorder: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(12),
+            borderSide: BorderSide(color: cs.outlineVariant.withValues(alpha: 0.5)),
+          ),
+          focusedBorder: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(12),
+            borderSide: BorderSide(color: cs.primary, width: 2),
+          ),
+          contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+        ),
+      ),
+    );
   }
 }
 

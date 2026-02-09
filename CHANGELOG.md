@@ -9,10 +9,21 @@
   - Full metadata embedding: cover art, title, artist, album, track/disc number, year, ISRC
   - Lyrics fetching from lrclib.net with embed and external .lrc support
   - Works as fallback when Tidal/Qobuz/Amazon downloads fail
+- **Edit Metadata**: Edit embedded metadata directly from the Track Metadata screen (FLAC, MP3, Opus)
+  - Editable fields: Title, Artist, Album, Album Artist, Date, Track#, Disc#, Genre, ISRC
+  - Advanced fields: Label, Copyright, Composer, Comment
+  - FLAC: native Go writer, MP3/Opus: FFmpeg-based writer
+  - UI refreshes in-place after save without needing to re-open the screen
+  - iOS and Android support
 
 ### Added
 
+- Save Cover Art: download high-quality album art as standalone .jpg from track metadata screen
+- Save Lyrics (.lrc): fetch and save lyrics as standalone .lrc file without downloading the song
+- Re-enrich Metadata: re-embed metadata, cover art, and lyrics into existing audio files without re-downloading (FLAC native, MP3/Opus via FFmpeg)
+- Re-enrich now supports local library items: searches Spotify/Deezer by track name + artist to fetch complete metadata from the internet, then embeds cover art, lyrics, genre, label, and all tags into the file
 - YouTube download provider using Cobalt API with SongLink/Odesli integration for Spotify/Deezer ID → YouTube URL conversion
+- SpotubeDL as fallback Cobalt proxy when primary API fails
 - YouTube video ID detection for YT Music extension compatibility
 - Parallel cover art and lyrics fetching during YouTube download
 - Queue progress now shows "X.X MB" instead of "0%" for streaming downloads where total size is unknown (Cobalt tunnel mode)
@@ -22,6 +33,23 @@
 
 - Removed Tidal HIGH (lossy AAC) quality option - use YouTube provider for lossy downloads instead
 - Simplified download service picker by removing dead lossy format code
+- Removed Amazon from download settings UI (now only used as automatic fallback)
+- Cleaned up dead disabled-chip code in download service selector
+
+### Fixed
+
+- Fixed `error.api.youtube.login` by using YouTube Music URLs instead of regular YouTube URLs for Cobalt requests
+- Fixed SongLink to prioritize `youtubeMusic` platform URL over `youtube` for Cobalt compatibility
+- Fixed YouTube metadata not being overwritten by setting `DisableMetadata: true` in Cobalt requests
+- Fixed ISRC validation in metadata enrichment flow - invalid ISRCs no longer trigger failed Deezer lookups
+- Fixed YouTube metadata enrichment to work like other providers (SongLink Deezer ID extraction, proper metadata embedding)
+- Go metadata parsers now read Composer, Comment, Label, Copyright from FLAC, MP3 (ID3v2.2/v2.3/v2.4), and Opus/OGG files
+- Added proper COMM frame parser for ID3v2 (handles language code + description prefix correctly)
+- Fixed Re-enrich Metadata failing on SAF storage files (`content://` URIs) - Kotlin now copies SAF file to temp, Go processes temp file, then writes back for FLAC or returns temp path for FFmpeg (MP3/Opus)
+- Fixed Save Cover Art and Save Lyrics crashing on SAF-stored download history items - now saves to temp then writes to SAF tree via `createSafFileFromPath`
+- Fixed `_getFileDirectory()` crash when called with `content://` URI by adding SAF guard
+- Fixed `readAudioMetadata` Kotlin handler not handling SAF URIs - now copies to temp for reading
+- Added metadata summary log in Re-enrich flow showing all fields before embedding (title, artist, album, track#, disc#, date, ISRC, genre, label)
 
 ---
 
