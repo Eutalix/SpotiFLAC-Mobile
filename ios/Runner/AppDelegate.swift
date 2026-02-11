@@ -83,31 +83,12 @@ import Gobackend  // Import Go framework
             if let error = error { throw error }
             return response
             
-        case "downloadTrack":
-            let requestJson = call.arguments as! String
-            let response = GobackendDownloadTrack(requestJson, &error)
-            if let error = error { throw error }
-            return response
-            
-        case "downloadWithFallback":
-            let requestJson = call.arguments as! String
-            let response = GobackendDownloadWithFallback(requestJson, &error)
-            if let error = error { throw error }
-            return response
-
         case "downloadByStrategy":
             let requestJson = call.arguments as! String
             let response = GobackendDownloadByStrategy(requestJson, &error)
             if let error = error { throw error }
             return response
 
-        // Backward compatibility for older Flutter download routing
-        case "downloadFromYouTube":
-            let requestJson = call.arguments as! String
-            let response = GobackendDownloadFromYouTube(requestJson, &error)
-            if let error = error { throw error }
-            return response
-            
         case "getDownloadProgress":
             let response = GobackendGetDownloadProgress()
             return response
@@ -527,17 +508,17 @@ import Gobackend  // Import Go framework
             if let error = error { throw error }
             return response
             
-        case "downloadWithExtensions":
-            let requestJson = call.arguments as! String
-            let response = GobackendDownloadWithExtensionsJSON(requestJson, &error)
-            if let error = error { throw error }
-            return response
-            
         case "enrichTrackWithExtension":
             let args = call.arguments as! [String: Any]
             let extensionId = args["extension_id"] as! String
             let trackJson = args["track"] as? String ?? "{}"
             let response = GobackendEnrichTrackWithExtensionJSON(extensionId, trackJson, &error)
+            if let error = error { throw error }
+            return response
+
+        case "downloadWithExtensions":
+            let requestJson = call.arguments as! String
+            let response = GobackendDownloadWithExtensionsJSON(requestJson, &error)
             if let error = error { throw error }
             return response
             
