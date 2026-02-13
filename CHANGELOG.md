@@ -1,5 +1,35 @@
 # Changelog
 
+## [3.6.8] - 2026-02-14
+
+### Added
+
+- **Lyrics Source Tracking**: Track Metadata screen now displays the source of loaded lyrics (LRCLIB, Musixmatch, Netease, Apple Music, QQ Music, Embedded, or Extension)
+  - New `getLyricsLRCWithSource` API returns lyrics with source metadata
+  - Source badge appears below lyrics section in Track Metadata screen
+- **Dedicated Lyrics Provider Priority Page**: Lyrics providers can now be configured from a dedicated settings page with full-screen reorderable list
+  - Replaced inline bottom sheet with `LyricsProviderPriorityPage`
+  - Cleaner UI with provider descriptions and priority ordering
+- **Paxsenix Partner Integration**: Added Paxsenix as official lyrics proxy partner for Apple Music and QQ Music sources
+  - Listed in About page and Partners page on project site
+  - README updated with partner attribution
+
+### Fixed
+
+- **LRC Background Vocal Preservation**: Apple Music/QQ Music `[bg:...]` background vocal tags are now preserved during LRC parsing instead of being stripped
+  - Background vocals attach to the previous timed line in exported LRC files
+- **LRC Display Improvements**:
+  - Inline word-by-word timestamps (`<mm:ss.xx>`) are stripped from lyrics display
+  - Speaker prefixes (`v1:`, `v2:`) are removed for cleaner display
+  - Multi-line background vocals converted to readable secondary vocal lines
+- **Apple Music Lyrics Case Sensitivity**: Fixed `lyricsType` comparison to use case-insensitive matching for "Syllable" type
+
+### Changed
+
+- Track Metadata lyrics fetching now uses `getLyricsLRCWithSource` for consistent source attribution across embedded and online lyrics
+
+---
+
 ## [3.6.7] - 2026-02-13
 
 ### Added
