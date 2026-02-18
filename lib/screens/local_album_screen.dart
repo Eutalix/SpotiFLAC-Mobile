@@ -1,5 +1,4 @@
 import 'dart:io';
-import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -66,10 +65,16 @@ class _LocalAlbumScreenState extends ConsumerState<LocalAlbumScreen> {
   }
 
   void _onScroll() {
-    final shouldShow = _scrollController.offset > 280;
+    final expandedHeight = _calculateExpandedHeight(context);
+    final shouldShow = _scrollController.offset > (expandedHeight - kToolbarHeight - 20);
     if (shouldShow != _showTitleInAppBar) {
       setState(() => _showTitleInAppBar = shouldShow);
     }
+  }
+
+  double _calculateExpandedHeight(BuildContext context) {
+    final mediaSize = MediaQuery.of(context).size;
+    return (mediaSize.height * 0.55).clamp(360.0, 520.0);
   }
 
   List<LocalLibraryItem> _buildSortedTracks() {
@@ -248,7 +253,6 @@ class _LocalAlbumScreenState extends ConsumerState<LocalAlbumScreen> {
               slivers: [
                 _buildAppBar(context, colorScheme),
                 _buildInfoCard(context, colorScheme, tracks),
-                _buildTrackListHeader(context, colorScheme, tracks),
                 _buildTrackList(context, colorScheme, tracks),
                 SliverToBoxAdapter(
                   child: SizedBox(height: _isSelectionMode ? 120 : 32),
@@ -276,14 +280,8 @@ class _LocalAlbumScreenState extends ConsumerState<LocalAlbumScreen> {
   }
 
   Widget _buildAppBar(BuildContext context, ColorScheme colorScheme) {
-    final mediaSize = MediaQuery.of(context).size;
-    final screenWidth = mediaSize.width;
-    final shortestSide = mediaSize.shortestSide;
-    final coverSize = (screenWidth * 0.5).clamp(140.0, 220.0);
-    final expandedHeight = (shortestSide * 0.82).clamp(280.0, 340.0);
-    final bottomGradientHeight = (shortestSide * 0.2).clamp(56.0, 80.0);
-    final coverTopPadding = (shortestSide * 0.14).clamp(40.0, 60.0);
-    final fallbackIconSize = (coverSize * 0.32).clamp(44.0, 64.0);
+    final expandedHeight = _calculateExpandedHeight(context);
+    final commonQuality = _commonQualityCache;
 
     return SliverAppBar(
       expandedHeight: expandedHeight,
@@ -313,11 +311,11 @@ class _LocalAlbumScreenState extends ConsumerState<LocalAlbumScreen> {
           final showContent = collapseRatio > 0.3;
 
           return FlexibleSpaceBar(
-            collapseMode: CollapseMode.none,
+            collapseMode: CollapseMode.parallax,
             background: Stack(
               fit: StackFit.expand,
               children: [
-                // Blurred cover background
+                // Full-screen cover background
                 if (widget.coverPath != null)
                   Image.file(
                     File(widget.coverPath!),
@@ -326,90 +324,161 @@ class _LocalAlbumScreenState extends ConsumerState<LocalAlbumScreen> {
                         Container(color: colorScheme.surface),
                   )
                 else
-                  Container(color: colorScheme.surface),
-                ClipRect(
-                  child: BackdropFilter(
-                    filter: ImageFilter.blur(sigmaX: 30, sigmaY: 30),
-                    child: Container(
-                      color: colorScheme.surface.withValues(alpha: 0.4),
+                  Container(
+                    color: colorScheme.surfaceContainerHighest,
+                    child: Icon(
+                      Icons.album,
+                      size: 80,
+                      color: colorScheme.onSurfaceVariant,
                     ),
                   ),
-                ),
+                // Bottom gradient for readability
                 Positioned(
                   left: 0,
                   right: 0,
                   bottom: 0,
-                  height: bottomGradientHeight,
+                  height: expandedHeight * 0.65,
                   child: Container(
                     decoration: BoxDecoration(
                       gradient: LinearGradient(
                         begin: Alignment.topCenter,
                         end: Alignment.bottomCenter,
                         colors: [
-                          colorScheme.surface.withValues(alpha: 0.0),
-                          colorScheme.surface,
+                          Colors.transparent,
+                          Colors.black.withValues(alpha: 0.85),
                         ],
                       ),
                     ),
                   ),
                 ),
-                // Cover image centered
-                AnimatedOpacity(
-                  duration: const Duration(milliseconds: 150),
-                  opacity: showContent ? 1.0 : 0.0,
-                  child: Center(
-                    child: Padding(
-                      padding: EdgeInsets.only(top: coverTopPadding),
-                      child: Container(
-                        width: coverSize,
-                        height: coverSize,
-                        decoration: BoxDecoration(
-                          borderRadius: BorderRadius.circular(20),
-                          boxShadow: [
-                            BoxShadow(
-                              color: Colors.black.withValues(alpha: 0.4),
-                              blurRadius: 30,
-                              offset: const Offset(0, 15),
-                            ),
-                          ],
+                // Album info overlay at bottom
+                Positioned(
+                  left: 20,
+                  right: 20,
+                  bottom: 40,
+                  child: AnimatedOpacity(
+                    duration: const Duration(milliseconds: 150),
+                    opacity: showContent ? 1.0 : 0.0,
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.center,
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Text(
+                          widget.albumName,
+                          style: const TextStyle(
+                            color: Colors.white,
+                            fontSize: 24,
+                            fontWeight: FontWeight.bold,
+                            height: 1.2,
+                          ),
+                          textAlign: TextAlign.center,
+                          maxLines: 3,
+                          overflow: TextOverflow.ellipsis,
                         ),
-                        child: ClipRRect(
-                          borderRadius: BorderRadius.circular(20),
-                          child: widget.coverPath != null
-                              ? Image.file(
-                                  File(widget.coverPath!),
-                                  fit: BoxFit.cover,
-                                  cacheWidth: (coverSize * 2).toInt(),
-                                  errorBuilder: (context, error, stackTrace) =>
-                                      Container(
-                                        color:
-                                            colorScheme.surfaceContainerHighest,
-                                        child: Icon(
-                                          Icons.album,
-                                          size: fallbackIconSize,
-                                          color: colorScheme.onSurfaceVariant,
-                                        ),
-                                      ),
-                                )
-                              : Container(
-                                  color: colorScheme.surfaceContainerHighest,
-                                  child: Icon(
-                                    Icons.album,
-                                    size: fallbackIconSize,
-                                    color: colorScheme.onSurfaceVariant,
+                        const SizedBox(height: 6),
+                        Text(
+                          widget.artistName,
+                          style: const TextStyle(
+                            color: Colors.white70,
+                            fontSize: 16,
+                            fontWeight: FontWeight.w600,
+                          ),
+                          textAlign: TextAlign.center,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                        const SizedBox(height: 12),
+                        Wrap(
+                          alignment: WrapAlignment.center,
+                          spacing: 8,
+                          runSpacing: 8,
+                          children: [
+                            Container(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 12,
+                                vertical: 6,
+                              ),
+                              decoration: BoxDecoration(
+                                color: Colors.white.withValues(alpha: 0.2),
+                                borderRadius: BorderRadius.circular(20),
+                              ),
+                              child: Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  const Icon(
+                                    Icons.folder,
+                                    size: 14,
+                                    color: Colors.white,
+                                  ),
+                                  const SizedBox(width: 4),
+                                  const Text(
+                                    'Local',
+                                    style: TextStyle(
+                                      color: Colors.white,
+                                      fontWeight: FontWeight.w600,
+                                      fontSize: 12,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                            Container(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 12,
+                                vertical: 6,
+                              ),
+                              decoration: BoxDecoration(
+                                color: Colors.white.withValues(alpha: 0.2),
+                                borderRadius: BorderRadius.circular(20),
+                              ),
+                              child: Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  const Icon(
+                                    Icons.music_note,
+                                    size: 14,
+                                    color: Colors.white,
+                                  ),
+                                  const SizedBox(width: 4),
+                                  Text(
+                                    '${_sortedTracksCache.length} tracks',
+                                    style: const TextStyle(
+                                      color: Colors.white,
+                                      fontWeight: FontWeight.w600,
+                                      fontSize: 12,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                            if (commonQuality != null)
+                              Container(
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 12,
+                                  vertical: 6,
+                                ),
+                                decoration: BoxDecoration(
+                                  color: Colors.white.withValues(alpha: 0.2),
+                                  borderRadius: BorderRadius.circular(20),
+                                ),
+                                child: Text(
+                                  commonQuality,
+                                  style: const TextStyle(
+                                    color: Colors.white,
+                                    fontWeight: FontWeight.w600,
+                                    fontSize: 12,
                                   ),
                                 ),
+                              ),
+                          ],
                         ),
-                      ),
+                      ],
                     ),
                   ),
                 ),
               ],
             ),
-            stretchModes: const [
-              StretchMode.zoomBackground,
-              StretchMode.blurBackground,
-            ],
+            stretchModes: const [StretchMode.zoomBackground],
           );
         },
       ),
@@ -417,10 +486,10 @@ class _LocalAlbumScreenState extends ConsumerState<LocalAlbumScreen> {
         icon: Container(
           padding: const EdgeInsets.all(8),
           decoration: BoxDecoration(
-            color: colorScheme.surface.withValues(alpha: 0.8),
+            color: Colors.black.withValues(alpha: 0.4),
             shape: BoxShape.circle,
           ),
-          child: Icon(Icons.arrow_back, color: colorScheme.onSurface),
+          child: const Icon(Icons.arrow_back, color: Colors.white),
         ),
         onPressed: () => Navigator.pop(context),
       ),
@@ -432,133 +501,8 @@ class _LocalAlbumScreenState extends ConsumerState<LocalAlbumScreen> {
     ColorScheme colorScheme,
     List<LocalLibraryItem> tracks,
   ) {
-    final commonQuality = _commonQualityCache;
-
-    return SliverToBoxAdapter(
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Card(
-          elevation: 0,
-          color: colorScheme.surfaceContainerLow,
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(20),
-          ),
-          child: Padding(
-            padding: const EdgeInsets.all(20),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  widget.albumName,
-                  style: Theme.of(context).textTheme.headlineSmall?.copyWith(
-                    fontWeight: FontWeight.bold,
-                    color: colorScheme.onSurface,
-                  ),
-                ),
-                const SizedBox(height: 4),
-                Text(
-                  widget.artistName,
-                  style: Theme.of(context).textTheme.bodyLarge?.copyWith(
-                    color: colorScheme.onSurfaceVariant,
-                  ),
-                ),
-                const SizedBox(height: 12),
-                Row(
-                  children: [
-                    // "Local" badge
-                    Container(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 12,
-                        vertical: 6,
-                      ),
-                      decoration: BoxDecoration(
-                        color: colorScheme.tertiaryContainer,
-                        borderRadius: BorderRadius.circular(20),
-                      ),
-                      child: Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Icon(
-                            Icons.folder,
-                            size: 14,
-                            color: colorScheme.onTertiaryContainer,
-                          ),
-                          const SizedBox(width: 4),
-                          Text(
-                            'Local',
-                            style: TextStyle(
-                              color: colorScheme.onTertiaryContainer,
-                              fontWeight: FontWeight.w600,
-                              fontSize: 12,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                    const SizedBox(width: 8),
-                    // Track count
-                    Container(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 12,
-                        vertical: 6,
-                      ),
-                      decoration: BoxDecoration(
-                        color: colorScheme.surfaceContainerHighest,
-                        borderRadius: BorderRadius.circular(20),
-                      ),
-                      child: Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Icon(
-                            Icons.music_note,
-                            size: 14,
-                            color: colorScheme.onSurfaceVariant,
-                          ),
-                          const SizedBox(width: 4),
-                          Text(
-                            '${tracks.length} tracks',
-                            style: TextStyle(
-                              color: colorScheme.onSurfaceVariant,
-                              fontWeight: FontWeight.w600,
-                              fontSize: 12,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                    const SizedBox(width: 8),
-                    // Quality badge if all tracks have the same quality
-                    if (commonQuality != null)
-                      Container(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 12,
-                          vertical: 6,
-                        ),
-                        decoration: BoxDecoration(
-                          color: commonQuality.contains('24')
-                              ? colorScheme.primaryContainer
-                              : colorScheme.surfaceContainerHighest,
-                          borderRadius: BorderRadius.circular(20),
-                        ),
-                        child: Text(
-                          commonQuality,
-                          style: TextStyle(
-                            color: commonQuality.contains('24')
-                                ? colorScheme.onPrimaryContainer
-                                : colorScheme.onSurfaceVariant,
-                            fontWeight: FontWeight.w600,
-                            fontSize: 12,
-                          ),
-                        ),
-                      ),
-                  ],
-                ),
-              ],
-            ),
-          ),
-        ),
-      ),
-    );
+    // Info is now displayed in the full-screen cover overlay
+    return const SliverToBoxAdapter(child: SizedBox.shrink());
   }
 
   String? _computeCommonQuality(List<LocalLibraryItem> tracks) {
@@ -593,43 +537,6 @@ class _LocalAlbumScreenState extends ConsumerState<LocalAlbumScreen> {
       }
     }
     return firstQuality;
-  }
-
-  Widget _buildTrackListHeader(
-    BuildContext context,
-    ColorScheme colorScheme,
-    List<LocalLibraryItem> tracks,
-  ) {
-    return SliverToBoxAdapter(
-      child: Padding(
-        padding: const EdgeInsets.fromLTRB(20, 8, 20, 8),
-        child: Row(
-          children: [
-            Icon(Icons.queue_music, size: 20, color: colorScheme.primary),
-            const SizedBox(width: 8),
-            Text(
-              context.l10n.downloadedAlbumTracksHeader,
-              style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                fontWeight: FontWeight.w600,
-                color: colorScheme.onSurface,
-              ),
-            ),
-            const Spacer(),
-            if (!_isSelectionMode)
-              TextButton.icon(
-                onPressed: tracks.isNotEmpty
-                    ? () => _enterSelectionMode(tracks.first.id)
-                    : null,
-                icon: const Icon(Icons.checklist, size: 18),
-                label: Text(context.l10n.actionSelect),
-                style: TextButton.styleFrom(
-                  visualDensity: VisualDensity.compact,
-                ),
-              ),
-          ],
-        ),
-      ),
-    );
   }
 
   Widget _buildTrackList(
