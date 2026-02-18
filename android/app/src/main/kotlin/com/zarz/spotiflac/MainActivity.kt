@@ -4,7 +4,6 @@ import android.app.Activity
 import android.content.Intent
 import android.net.Uri
 import android.os.Build
-import android.os.ParcelFileDescriptor
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.documentfile.provider.DocumentFile
 import io.flutter.embedding.android.FlutterActivityLaunchConfigs.BackgroundMode
@@ -666,22 +665,12 @@ class MainActivity: FlutterFragmentActivity() {
 
         val pfd = contentResolver.openFileDescriptor(document.uri, "rw")
             ?: return errorJson("Failed to open SAF file")
-        var fdHandedOffToGo = false
 
         try {
-            // Keep the original PFD open so the document provider receives close signaling.
-            // Pass a duplicated FD to Go and detach only the duplicate.
-            val writerPfd = ParcelFileDescriptor.dup(pfd.fileDescriptor)
-            val detachedFd = writerPfd.detachFd()
-            try {
-                writerPfd.close()
-            } catch (_: Exception) {}
-
-            // After detach, ownership is intended for Go. Kotlin must never close this FD,
-            // otherwise Android fdsan may abort on double-close during cancellation races.
-            fdHandedOffToGo = true
-            req.put("output_path", "/proc/self/fd/$detachedFd")
-            req.put("output_fd", detachedFd)
+            // Keep SAF PFD ownership in Kotlin and pass only procfs path to Go.
+            // Go re-opens this procfs FD path for writing to avoid raw FD ownership handoff.
+            req.put("output_path", "/proc/self/fd/${pfd.fd}")
+            req.put("output_fd", 0)
             req.put("output_ext", outputExt)
             val response = downloader(req.toString())
             val respObj = JSONObject(response)
@@ -696,9 +685,6 @@ class MainActivity: FlutterFragmentActivity() {
             document.delete()
             return errorJson("SAF download failed: ${e.message}")
         } finally {
-            if (!fdHandedOffToGo) {
-                android.util.Log.w("SpotiFLAC", "SAF writer FD was not handed off to Go")
-            }
             try {
                 pfd.close()
             } catch (_: Exception) {}

@@ -5125,7 +5125,7 @@ abstract class AppLocalizations {
   /// Menu action - re-embed metadata into audio file
   ///
   /// In en, this message translates to:
-  /// **'Re-enrich Metadata'**
+  /// **'Re-enrich'**
   String get trackReEnrich;
 
   /// Subtitle for re-enrich metadata action

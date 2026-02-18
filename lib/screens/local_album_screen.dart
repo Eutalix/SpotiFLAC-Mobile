@@ -3,9 +3,9 @@ import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:share_plus/share_plus.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:spotiflac_android/l10n/l10n.dart';
+import 'package:spotiflac_android/providers/settings_provider.dart';
 import 'package:spotiflac_android/utils/file_access.dart';
 import 'package:spotiflac_android/services/library_database.dart';
 import 'package:spotiflac_android/services/ffmpeg_service.dart';
@@ -578,7 +578,11 @@ class _LocalAlbumScreenState extends ConsumerState<LocalAlbumScreen> {
     }
 
     // For lossless formats, use bit depth / sample rate
-    if (first.bitDepth == null || first.bitDepth == 0 || first.sampleRate == null) return null;
+    if (first.bitDepth == null ||
+        first.bitDepth == 0 ||
+        first.sampleRate == null) {
+      return null;
+    }
 
     final firstQuality =
         '${first.bitDepth}/${(first.sampleRate! / 1000).round()}kHz';
@@ -824,47 +828,246 @@ class _LocalAlbumScreenState extends ConsumerState<LocalAlbumScreen> {
     );
   }
 
-  /// Share selected local tracks
-  Future<void> _shareSelected(List<LocalLibraryItem> allTracks) async {
-    final tracksById = {for (final t in allTracks) t.id: t};
-    final safUris = <String>[];
-    final filesToShare = <XFile>[];
+  bool _hasValue(String? value) => value != null && value.trim().isNotEmpty;
 
-    for (final id in _selectedIds) {
-      final item = tracksById[id];
-      if (item == null) continue;
-      final path = item.filePath;
-      if (isContentUri(path)) {
-        if (await fileExists(path)) safUris.add(path);
-      } else if (await fileExists(path)) {
-        filesToShare.add(XFile(path));
+  Future<void> _safeDeleteFile(String path) async {
+    try {
+      final file = File(path);
+      if (await file.exists()) {
+        await file.delete();
       }
-    }
+    } catch (_) {}
+  }
 
-    if (safUris.isEmpty && filesToShare.isEmpty) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(context.l10n.selectionShareNoFiles)),
-        );
+  Future<void> _cleanupTempFileAndParent(String path) async {
+    await _safeDeleteFile(path);
+    try {
+      final parent = File(path).parent;
+      if (await parent.exists()) {
+        await parent.delete();
       }
-      return;
-    }
+    } catch (_) {}
+  }
 
-    // Share SAF content URIs via native intent
-    if (safUris.isNotEmpty) {
+  Future<bool> _applyFfmpegReEnrichResult(
+    LocalLibraryItem item,
+    Map<String, dynamic> result,
+  ) async {
+    final tempPath = result['temp_path'] as String?;
+    final safUri = result['saf_uri'] as String?;
+    final ffmpegTarget = _hasValue(tempPath) ? tempPath! : item.filePath;
+    final downloadedCoverPath = result['cover_path'] as String?;
+    String? effectiveCoverPath = downloadedCoverPath;
+    String? extractedCoverPath;
+
+    if (!_hasValue(effectiveCoverPath)) {
       try {
-        if (safUris.length == 1) {
-          await PlatformBridge.shareContentUri(safUris.first);
+        final tempDir = await Directory.systemTemp.createTemp(
+          'reenrich_cover_',
+        );
+        final coverOutput = '${tempDir.path}${Platform.pathSeparator}cover.jpg';
+        final extracted = await PlatformBridge.extractCoverToFile(
+          ffmpegTarget,
+          coverOutput,
+        );
+        if (extracted['error'] == null) {
+          effectiveCoverPath = coverOutput;
+          extractedCoverPath = coverOutput;
         } else {
-          await PlatformBridge.shareMultipleContentUris(safUris);
+          try {
+            await tempDir.delete(recursive: true);
+          } catch (_) {}
         }
       } catch (_) {}
     }
 
-    // Share regular files via SharePlus
-    if (filesToShare.isNotEmpty) {
-      await SharePlus.instance.share(ShareParams(files: filesToShare));
+    final metadata = (result['metadata'] as Map<String, dynamic>?)?.map(
+      (k, v) => MapEntry(k, v.toString()),
+    );
+
+    final format = item.format?.toLowerCase();
+    final lowerPath = item.filePath.toLowerCase();
+    final isMp3 = format == 'mp3' || lowerPath.endsWith('.mp3');
+    final isOpus =
+        format == 'opus' ||
+        format == 'ogg' ||
+        lowerPath.endsWith('.opus') ||
+        lowerPath.endsWith('.ogg');
+
+    String? ffmpegResult;
+    if (isMp3) {
+      ffmpegResult = await FFmpegService.embedMetadataToMp3(
+        mp3Path: ffmpegTarget,
+        coverPath: effectiveCoverPath,
+        metadata: metadata,
+      );
+    } else if (isOpus) {
+      ffmpegResult = await FFmpegService.embedMetadataToOpus(
+        opusPath: ffmpegTarget,
+        coverPath: effectiveCoverPath,
+        metadata: metadata,
+      );
     }
+
+    if (ffmpegResult != null && _hasValue(tempPath) && _hasValue(safUri)) {
+      final ok = await PlatformBridge.writeTempToSaf(ffmpegResult, safUri!);
+      if (!ok) {
+        if (_hasValue(downloadedCoverPath)) {
+          await _safeDeleteFile(downloadedCoverPath!);
+        }
+        if (_hasValue(extractedCoverPath)) {
+          await _cleanupTempFileAndParent(extractedCoverPath!);
+        }
+        await _safeDeleteFile(tempPath!);
+        return false;
+      }
+    }
+
+    if (_hasValue(downloadedCoverPath)) {
+      await _safeDeleteFile(downloadedCoverPath!);
+    }
+    if (_hasValue(extractedCoverPath)) {
+      await _cleanupTempFileAndParent(extractedCoverPath!);
+    }
+    if (_hasValue(tempPath)) {
+      await _safeDeleteFile(tempPath!);
+    }
+
+    return ffmpegResult != null;
+  }
+
+  Future<bool> _reEnrichLocalTrack(LocalLibraryItem item) async {
+    final durationMs = (item.duration ?? 0) * 1000;
+    final request = <String, dynamic>{
+      'file_path': item.filePath,
+      'cover_url': '',
+      'max_quality': true,
+      'embed_lyrics': true,
+      'spotify_id': '',
+      'track_name': item.trackName,
+      'artist_name': item.artistName,
+      'album_name': item.albumName,
+      'album_artist': item.albumArtist ?? item.artistName,
+      'track_number': item.trackNumber ?? 0,
+      'disc_number': item.discNumber ?? 0,
+      'release_date': item.releaseDate ?? '',
+      'isrc': item.isrc ?? '',
+      'genre': item.genre ?? '',
+      'label': '',
+      'copyright': '',
+      'duration_ms': durationMs,
+      'search_online': true,
+    };
+
+    final result = await PlatformBridge.reEnrichFile(request);
+    final method = result['method'] as String?;
+    if (method == 'native') {
+      return true;
+    }
+    if (method == 'ffmpeg') {
+      return _applyFfmpegReEnrichResult(item, result);
+    }
+    return false;
+  }
+
+  /// Batch re-enrich selected local tracks
+  Future<void> _reEnrichSelected(List<LocalLibraryItem> allTracks) async {
+    final tracksById = {for (final t in allTracks) t.id: t};
+    final selected = <LocalLibraryItem>[];
+
+    for (final id in _selectedIds) {
+      final item = tracksById[id];
+      if (item != null) {
+        selected.add(item);
+      }
+    }
+
+    if (selected.isEmpty) {
+      return;
+    }
+
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text(context.l10n.trackReEnrich),
+        content: Text(
+          '${context.l10n.trackReEnrichOnlineSubtitle}\n\n'
+          '${context.l10n.downloadedAlbumSelectedCount(selected.length)}',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: Text(context.l10n.dialogCancel),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: Text(context.l10n.trackReEnrich),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed != true || !mounted) {
+      return;
+    }
+
+    var successCount = 0;
+    final total = selected.length;
+
+    for (var i = 0; i < total; i++) {
+      if (!mounted) break;
+      final item = selected[i];
+
+      ScaffoldMessenger.of(context).clearSnackBars();
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            '${context.l10n.trackReEnrichProgress} (${i + 1}/$total)',
+          ),
+          duration: const Duration(seconds: 30),
+        ),
+      );
+
+      try {
+        final ok = await _reEnrichLocalTrack(item);
+        if (ok) {
+          successCount++;
+        }
+      } catch (_) {}
+    }
+
+    if (!mounted) {
+      return;
+    }
+
+    final localLibraryPath = ref.read(settingsProvider).localLibraryPath.trim();
+    try {
+      if (localLibraryPath.isNotEmpty &&
+          !ref.read(localLibraryProvider).isScanning) {
+        await ref
+            .read(localLibraryProvider.notifier)
+            .startScan(localLibraryPath);
+      } else {
+        await ref.read(localLibraryProvider.notifier).reloadFromStorage();
+      }
+    } catch (_) {
+      await ref.read(localLibraryProvider.notifier).reloadFromStorage();
+    }
+
+    _exitSelectionMode();
+
+    if (!mounted) {
+      return;
+    }
+
+    ScaffoldMessenger.of(context).clearSnackBars();
+    final failedCount = total - successCount;
+    final summary = failedCount <= 0
+        ? '${context.l10n.trackReEnrichSuccess} ($successCount/$total)'
+        : '${context.l10n.trackReEnrichSuccess} ($successCount/$total) • Failed: $failedCount';
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(SnackBar(content: Text(summary)));
   }
 
   /// Show batch convert bottom sheet
@@ -899,7 +1102,9 @@ class _LocalAlbumScreenState extends ConsumerState<LocalAlbumScreen> {
                         width: 40,
                         height: 4,
                         decoration: BoxDecoration(
-                          color: colorScheme.onSurfaceVariant.withValues(alpha: 0.4),
+                          color: colorScheme.onSurfaceVariant.withValues(
+                            alpha: 0.4,
+                          ),
                           borderRadius: BorderRadius.circular(2),
                         ),
                       ),
@@ -931,8 +1136,9 @@ class _LocalAlbumScreenState extends ConsumerState<LocalAlbumScreen> {
                               if (selected) {
                                 setSheetState(() {
                                   selectedFormat = format;
-                                  selectedBitrate =
-                                      format == 'Opus' ? '128k' : '320k';
+                                  selectedBitrate = format == 'Opus'
+                                      ? '128k'
+                                      : '320k';
                                 });
                               }
                             },
@@ -982,7 +1188,9 @@ class _LocalAlbumScreenState extends ConsumerState<LocalAlbumScreen> {
                           ),
                         ),
                         child: Text(
-                          context.l10n.selectionConvertCount(_selectedIds.length),
+                          context.l10n.selectionConvertCount(
+                            _selectedIds.length,
+                          ),
                         ),
                       ),
                     ),
@@ -1050,7 +1258,9 @@ class _LocalAlbumScreenState extends ConsumerState<LocalAlbumScreen> {
         title: Text(context.l10n.selectionBatchConvertConfirmTitle),
         content: Text(
           context.l10n.selectionBatchConvertConfirmMessage(
-            selected.length, targetFormat, bitrate,
+            selected.length,
+            targetFormat,
+            bitrate,
           ),
         ),
         actions: [
@@ -1079,7 +1289,9 @@ class _LocalAlbumScreenState extends ConsumerState<LocalAlbumScreen> {
       ScaffoldMessenger.of(context).clearSnackBars();
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text(context.l10n.selectionBatchConvertProgress(i + 1, total)),
+          content: Text(
+            context.l10n.selectionBatchConvertProgress(i + 1, total),
+          ),
           duration: const Duration(seconds: 30),
         ),
       );
@@ -1108,7 +1320,8 @@ class _LocalAlbumScreenState extends ConsumerState<LocalAlbumScreen> {
           final coverOutput =
               '${tempDir.path}${Platform.pathSeparator}batch_cover_${DateTime.now().millisecondsSinceEpoch}.jpg';
           final coverResult = await PlatformBridge.extractCoverToFile(
-            item.filePath, coverOutput,
+            item.filePath,
+            coverOutput,
           );
           if (coverResult['error'] == null) coverPath = coverOutput;
         } catch (_) {}
@@ -1119,7 +1332,9 @@ class _LocalAlbumScreenState extends ConsumerState<LocalAlbumScreen> {
 
         if (isSaf) {
           // Copy SAF file to temp for conversion
-          safTempPath = await PlatformBridge.copyContentUriToTemp(item.filePath);
+          safTempPath = await PlatformBridge.copyContentUriToTemp(
+            item.filePath,
+          );
           if (safTempPath == null) continue;
           workingPath = safTempPath;
         }
@@ -1134,12 +1349,16 @@ class _LocalAlbumScreenState extends ConsumerState<LocalAlbumScreen> {
         );
 
         if (coverPath != null) {
-          try { await File(coverPath).delete(); } catch (_) {}
+          try {
+            await File(coverPath).delete();
+          } catch (_) {}
         }
 
         if (newPath == null) {
           if (safTempPath != null) {
-            try { await File(safTempPath).delete(); } catch (_) {}
+            try {
+              await File(safTempPath).delete();
+            } catch (_) {}
           }
           continue;
         }
@@ -1165,7 +1384,8 @@ class _LocalAlbumScreenState extends ConsumerState<LocalAlbumScreen> {
           final docIdx = pathSegments.indexOf('document');
           if (treeIdx >= 0 && treeIdx + 1 < pathSegments.length) {
             final treeId = pathSegments[treeIdx + 1];
-            treeUri = 'content://${uri.authority}/tree/${Uri.encodeComponent(treeId)}';
+            treeUri =
+                'content://${uri.authority}/tree/${Uri.encodeComponent(treeId)}';
           }
 
           if (docIdx >= 0 && docIdx + 1 < pathSegments.length) {
@@ -1179,9 +1399,13 @@ class _LocalAlbumScreenState extends ConsumerState<LocalAlbumScreen> {
                   : '';
               if (treeId.isNotEmpty && docPath.startsWith(treeId)) {
                 final afterTree = docPath.substring(treeId.length);
-                final trimmed = afterTree.startsWith('/') ? afterTree.substring(1) : afterTree;
+                final trimmed = afterTree.startsWith('/')
+                    ? afterTree.substring(1)
+                    : afterTree;
                 final lastSlash = trimmed.lastIndexOf('/');
-                relativeDir = lastSlash >= 0 ? trimmed.substring(0, lastSlash) : '';
+                relativeDir = lastSlash >= 0
+                    ? trimmed.substring(0, lastSlash)
+                    : '';
               }
             } else {
               oldFileName = docPath;
@@ -1190,10 +1414,16 @@ class _LocalAlbumScreenState extends ConsumerState<LocalAlbumScreen> {
 
           if (treeUri != null && oldFileName.isNotEmpty) {
             final dotIdx = oldFileName.lastIndexOf('.');
-            final baseName = dotIdx > 0 ? oldFileName.substring(0, dotIdx) : oldFileName;
-            final newExt = targetFormat.toLowerCase() == 'opus' ? '.opus' : '.mp3';
+            final baseName = dotIdx > 0
+                ? oldFileName.substring(0, dotIdx)
+                : oldFileName;
+            final newExt = targetFormat.toLowerCase() == 'opus'
+                ? '.opus'
+                : '.mp3';
             final newFileName = '$baseName$newExt';
-            final mimeType = targetFormat.toLowerCase() == 'opus' ? 'audio/opus' : 'audio/mpeg';
+            final mimeType = targetFormat.toLowerCase() == 'opus'
+                ? 'audio/opus'
+                : 'audio/mpeg';
 
             final safUri = await PlatformBridge.createSafFileFromPath(
               treeUri: treeUri,
@@ -1204,22 +1434,32 @@ class _LocalAlbumScreenState extends ConsumerState<LocalAlbumScreen> {
             );
 
             if (safUri == null || safUri.isEmpty) {
-              try { await File(newPath).delete(); } catch (_) {}
+              try {
+                await File(newPath).delete();
+              } catch (_) {}
               if (safTempPath != null) {
-                try { await File(safTempPath).delete(); } catch (_) {}
+                try {
+                  await File(safTempPath).delete();
+                } catch (_) {}
               }
               continue;
             }
 
             // Delete old SAF file
-            try { await PlatformBridge.safDelete(item.filePath); } catch (_) {}
+            try {
+              await PlatformBridge.safDelete(item.filePath);
+            } catch (_) {}
             await localDb.deleteByPath(item.filePath);
           }
 
           // Clean up temp files
-          try { await File(newPath).delete(); } catch (_) {}
+          try {
+            await File(newPath).delete();
+          } catch (_) {}
           if (safTempPath != null) {
-            try { await File(safTempPath).delete(); } catch (_) {}
+            try {
+              await File(safTempPath).delete();
+            } catch (_) {}
           }
         } else {
           // Regular file: just remove old entry, rescan will find the new one
@@ -1239,7 +1479,11 @@ class _LocalAlbumScreenState extends ConsumerState<LocalAlbumScreen> {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(
-            context.l10n.selectionBatchConvertSuccess(successCount, total, targetFormat),
+            context.l10n.selectionBatchConvertSuccess(
+              successCount,
+              total,
+              targetFormat,
+            ),
           ),
         ),
       );
@@ -1298,7 +1542,9 @@ class _LocalAlbumScreenState extends ConsumerState<LocalAlbumScreen> {
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Text(
-                          context.l10n.downloadedAlbumSelectedCount(selectedCount),
+                          context.l10n.downloadedAlbumSelectedCount(
+                            selectedCount,
+                          ),
                           style: Theme.of(context).textTheme.titleMedium
                               ?.copyWith(fontWeight: FontWeight.bold),
                         ),
@@ -1337,15 +1583,15 @@ class _LocalAlbumScreenState extends ConsumerState<LocalAlbumScreen> {
               ),
               const SizedBox(height: 12),
 
-              // Action buttons row: Share, Convert
+              // Action buttons row: Re-enrich, Convert
               Row(
                 children: [
                   Expanded(
                     child: _LocalAlbumSelectionActionButton(
-                      icon: Icons.share_outlined,
-                      label: context.l10n.selectionShareCount(selectedCount),
+                      icon: Icons.auto_fix_high_outlined,
+                      label: '${context.l10n.trackReEnrich} ($selectedCount)',
                       onPressed: selectedCount > 0
-                          ? () => _shareSelected(tracks)
+                          ? () => _reEnrichSelected(tracks)
                           : null,
                       colorScheme: colorScheme,
                     ),

@@ -2187,7 +2187,7 @@
   "@trackSaveLyricsSubtitle": {"description": "Subtitle for save lyrics action"},
   "trackSaveLyricsProgress": "Saving lyrics...",
   "@trackSaveLyricsProgress": {"description": "Snackbar while saving lyrics to file"},
-  "trackReEnrich": "Re-enrich Metadata",
+  "trackReEnrich": "Re-enrich",
   "@trackReEnrich": {"description": "Menu action - re-embed metadata into audio file"},
   "trackReEnrichSubtitle": "Re-embed metadata without re-downloading",
   "@trackReEnrichSubtitle": {"description": "Subtitle for re-enrich metadata action"},

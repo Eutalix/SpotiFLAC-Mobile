@@ -1019,7 +1019,9 @@ class _DownloadedAlbumScreenState extends ConsumerState<DownloadedAlbumScreen> {
                         width: 40,
                         height: 4,
                         decoration: BoxDecoration(
-                          color: colorScheme.onSurfaceVariant.withValues(alpha: 0.4),
+                          color: colorScheme.onSurfaceVariant.withValues(
+                            alpha: 0.4,
+                          ),
                           borderRadius: BorderRadius.circular(2),
                         ),
                       ),
@@ -1051,8 +1053,9 @@ class _DownloadedAlbumScreenState extends ConsumerState<DownloadedAlbumScreen> {
                               if (selected) {
                                 setSheetState(() {
                                   selectedFormat = format;
-                                  selectedBitrate =
-                                      format == 'Opus' ? '128k' : '320k';
+                                  selectedBitrate = format == 'Opus'
+                                      ? '128k'
+                                      : '320k';
                                 });
                               }
                             },
@@ -1102,7 +1105,9 @@ class _DownloadedAlbumScreenState extends ConsumerState<DownloadedAlbumScreen> {
                           ),
                         ),
                         child: Text(
-                          context.l10n.selectionConvertCount(_selectedIds.length),
+                          context.l10n.selectionConvertCount(
+                            _selectedIds.length,
+                          ),
                         ),
                       ),
                     ),
@@ -1127,12 +1132,16 @@ class _DownloadedAlbumScreenState extends ConsumerState<DownloadedAlbumScreen> {
       final item = tracksById[id];
       if (item == null) continue;
       // For SAF items, use safFileName to detect format (filePath is content:// URI)
-      final nameToCheck = (item.safFileName != null && item.safFileName!.isNotEmpty)
+      final nameToCheck =
+          (item.safFileName != null && item.safFileName!.isNotEmpty)
           ? item.safFileName!.toLowerCase()
           : item.filePath.toLowerCase();
-      final ext = nameToCheck.endsWith('.flac') ? 'FLAC'
-          : nameToCheck.endsWith('.mp3') ? 'MP3'
-          : (nameToCheck.endsWith('.opus') || nameToCheck.endsWith('.ogg')) ? 'Opus'
+      final ext = nameToCheck.endsWith('.flac')
+          ? 'FLAC'
+          : nameToCheck.endsWith('.mp3')
+          ? 'MP3'
+          : (nameToCheck.endsWith('.opus') || nameToCheck.endsWith('.ogg'))
+          ? 'Opus'
           : null;
       if (ext != null && ext != targetFormat) selected.add(item);
     }
@@ -1152,7 +1161,9 @@ class _DownloadedAlbumScreenState extends ConsumerState<DownloadedAlbumScreen> {
         title: Text(context.l10n.selectionBatchConvertConfirmTitle),
         content: Text(
           context.l10n.selectionBatchConvertConfirmMessage(
-            selected.length, targetFormat, bitrate,
+            selected.length,
+            targetFormat,
+            bitrate,
           ),
         ),
         actions: [
@@ -1173,6 +1184,8 @@ class _DownloadedAlbumScreenState extends ConsumerState<DownloadedAlbumScreen> {
     int successCount = 0;
     final total = selected.length;
     final historyDb = HistoryDatabase.instance;
+    final newQuality =
+        '${targetFormat.toUpperCase()} ${bitrate.trim().toLowerCase()}';
 
     for (int i = 0; i < total; i++) {
       if (!mounted) break;
@@ -1181,7 +1194,9 @@ class _DownloadedAlbumScreenState extends ConsumerState<DownloadedAlbumScreen> {
       ScaffoldMessenger.of(context).clearSnackBars();
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text(context.l10n.selectionBatchConvertProgress(i + 1, total)),
+          content: Text(
+            context.l10n.selectionBatchConvertProgress(i + 1, total),
+          ),
           duration: const Duration(seconds: 30),
         ),
       );
@@ -1210,7 +1225,8 @@ class _DownloadedAlbumScreenState extends ConsumerState<DownloadedAlbumScreen> {
           final coverOutput =
               '${tempDir.path}${Platform.pathSeparator}batch_cover_${DateTime.now().millisecondsSinceEpoch}.jpg';
           final coverResult = await PlatformBridge.extractCoverToFile(
-            item.filePath, coverOutput,
+            item.filePath,
+            coverOutput,
           );
           if (coverResult['error'] == null) coverPath = coverOutput;
         } catch (_) {}
@@ -1220,7 +1236,9 @@ class _DownloadedAlbumScreenState extends ConsumerState<DownloadedAlbumScreen> {
         String? safTempPath;
 
         if (isSaf) {
-          safTempPath = await PlatformBridge.copyContentUriToTemp(item.filePath);
+          safTempPath = await PlatformBridge.copyContentUriToTemp(
+            item.filePath,
+          );
           if (safTempPath == null) continue;
           workingPath = safTempPath;
         }
@@ -1235,12 +1253,16 @@ class _DownloadedAlbumScreenState extends ConsumerState<DownloadedAlbumScreen> {
         );
 
         if (coverPath != null) {
-          try { await File(coverPath).delete(); } catch (_) {}
+          try {
+            await File(coverPath).delete();
+          } catch (_) {}
         }
 
         if (newPath == null) {
           if (safTempPath != null) {
-            try { await File(safTempPath).delete(); } catch (_) {}
+            try {
+              await File(safTempPath).delete();
+            } catch (_) {}
           }
           continue;
         }
@@ -1251,10 +1273,16 @@ class _DownloadedAlbumScreenState extends ConsumerState<DownloadedAlbumScreen> {
           if (treeUri != null && treeUri.isNotEmpty) {
             final oldFileName = item.safFileName ?? '';
             final dotIdx = oldFileName.lastIndexOf('.');
-            final baseName = dotIdx > 0 ? oldFileName.substring(0, dotIdx) : oldFileName;
-            final newExt = targetFormat.toLowerCase() == 'opus' ? '.opus' : '.mp3';
+            final baseName = dotIdx > 0
+                ? oldFileName.substring(0, dotIdx)
+                : oldFileName;
+            final newExt = targetFormat.toLowerCase() == 'opus'
+                ? '.opus'
+                : '.mp3';
             final newFileName = '$baseName$newExt';
-            final mimeType = targetFormat.toLowerCase() == 'opus' ? 'audio/opus' : 'audio/mpeg';
+            final mimeType = targetFormat.toLowerCase() == 'opus'
+                ? 'audio/opus'
+                : 'audio/mpeg';
 
             final safUri = await PlatformBridge.createSafFileFromPath(
               treeUri: treeUri,
@@ -1265,22 +1293,43 @@ class _DownloadedAlbumScreenState extends ConsumerState<DownloadedAlbumScreen> {
             );
 
             if (safUri == null || safUri.isEmpty) {
-              try { await File(newPath).delete(); } catch (_) {}
+              try {
+                await File(newPath).delete();
+              } catch (_) {}
               if (safTempPath != null) {
-                try { await File(safTempPath).delete(); } catch (_) {}
+                try {
+                  await File(safTempPath).delete();
+                } catch (_) {}
               }
               continue;
             }
 
-            try { await PlatformBridge.safDelete(item.filePath); } catch (_) {}
-            await historyDb.updateFilePath(item.id, safUri, newSafFileName: newFileName);
+            try {
+              await PlatformBridge.safDelete(item.filePath);
+            } catch (_) {}
+            await historyDb.updateFilePath(
+              item.id,
+              safUri,
+              newSafFileName: newFileName,
+              newQuality: newQuality,
+              clearAudioSpecs: true,
+            );
           }
-          try { await File(newPath).delete(); } catch (_) {}
+          try {
+            await File(newPath).delete();
+          } catch (_) {}
           if (safTempPath != null) {
-            try { await File(safTempPath).delete(); } catch (_) {}
+            try {
+              await File(safTempPath).delete();
+            } catch (_) {}
           }
         } else {
-          await historyDb.updateFilePath(item.id, newPath);
+          await historyDb.updateFilePath(
+            item.id,
+            newPath,
+            newQuality: newQuality,
+            clearAudioSpecs: true,
+          );
         }
 
         successCount++;
@@ -1295,7 +1344,11 @@ class _DownloadedAlbumScreenState extends ConsumerState<DownloadedAlbumScreen> {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(
-            context.l10n.selectionBatchConvertSuccess(successCount, total, targetFormat),
+            context.l10n.selectionBatchConvertSuccess(
+              successCount,
+              total,
+              targetFormat,
+            ),
           ),
         ),
       );
@@ -1354,7 +1407,9 @@ class _DownloadedAlbumScreenState extends ConsumerState<DownloadedAlbumScreen> {
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Text(
-                          context.l10n.downloadedAlbumSelectedCount(selectedCount),
+                          context.l10n.downloadedAlbumSelectedCount(
+                            selectedCount,
+                          ),
                           style: Theme.of(context).textTheme.titleMedium
                               ?.copyWith(fontWeight: FontWeight.bold),
                         ),

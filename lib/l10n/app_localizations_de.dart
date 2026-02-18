@@ -2907,7 +2907,7 @@ class AppLocalizationsDe extends AppLocalizations {
   String get trackSaveLyricsProgress => 'Saving lyrics...';
 
   @override
-  String get trackReEnrich => 'Re-enrich Metadata';
+  String get trackReEnrich => 'Re-enrich';
 
   @override
   String get trackReEnrichSubtitle =>

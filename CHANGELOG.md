@@ -1,5 +1,33 @@
 # Changelog
 
+## [3.7.0] - 2026-02-18
+
+### Added
+
+- **Multi-select Share**: Share multiple downloaded/local tracks at once from the selection bottom bar
+  - Supports SAF content URIs via native `ACTION_SEND_MULTIPLE` intent
+  - Supports regular file paths via SharePlus
+  - Available in Downloaded Album, Local Album, and Queue tab screens
+- **Multi-select Batch Convert**: Convert multiple selected tracks to MP3 or Opus in one operation
+  - Bottom sheet UI with format (MP3 / Opus) and bitrate (128k / 192k / 256k / 320k) selection
+  - Full SAF support: copies to temp, converts, writes back, deletes original, updates history
+  - Progress and result snackbar feedback during conversion
+  - Available in Downloaded Album, Local Album, and Queue tab screens
+- **Native `shareMultipleContentUris`**: New Android `ACTION_SEND_MULTIPLE` handler in `MainActivity` for sharing multiple SAF content URIs
+- **Localization**: Added selection share/convert strings to all 13 supported locales (`selectionShareCount`, `selectionShareNoFiles`, `selectionConvertCount`, `selectionConvertNoConvertible`, `selectionBatchConvertConfirmTitle`, `selectionBatchConvertConfirmMessage`, `selectionBatchConvertProgress`, `selectionBatchConvertSuccess`)
+
+### Changed
+
+- **Local Album Multi-select Action Updated**: Replaced batch `Share` action with batch `Re-enrich`
+  - Local album selection bar now uses `Re-enrich` + `Convert` actions
+  - Added batch re-enrich processing for local tracks (FLAC native path and MP3/Opus FFmpeg path, including SAF write-back flow)
+  - After batch re-enrich completes, local library is refreshed via incremental scan so updated metadata appears in UI immediately
+- **Queue Multi-select Local Action Updated**: Queue selection bar now switches the first action to `Re-enrich` when selected items are local-only
+  - If selection contains downloaded or mixed items, action remains `Share`
+  - Local-only selection now supports batch re-enrich with the same native/FFmpeg + SAF flow and auto-refreshes local library metadata after completion
+
+---
+
 ## [3.6.9] - 2026-02-17
 
 ### Added

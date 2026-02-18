@@ -79,7 +79,9 @@ class UnifiedLibraryItem {
       // Lossy format with bitrate
       final fmt = item.format?.toUpperCase() ?? '';
       quality = '$fmt ${item.bitrate}kbps'.trim();
-    } else if (item.bitDepth != null && item.bitDepth! > 0 && item.sampleRate != null) {
+    } else if (item.bitDepth != null &&
+        item.bitDepth! > 0 &&
+        item.sampleRate != null) {
       // Lossless format with actual bit depth
       quality =
           '${item.bitDepth}bit/${(item.sampleRate! / 1000).toStringAsFixed(1)}kHz';
@@ -910,7 +912,9 @@ class _QueueTabState extends ConsumerState<QueueTab> {
     if (item.bitrate != null && item.bitrate! > 0) {
       return '${item.bitrate}kbps';
     }
-    if (item.bitDepth == null || item.bitDepth == 0 || item.sampleRate == null) {
+    if (item.bitDepth == null ||
+        item.bitDepth == 0 ||
+        item.sampleRate == null) {
       return null;
     }
     return '${item.bitDepth}bit/${(item.sampleRate! / 1000).toStringAsFixed(1)}kHz';
@@ -2927,6 +2931,263 @@ class _QueueTabState extends ConsumerState<QueueTab> {
     );
   }
 
+  bool _hasTextValue(String? value) => value != null && value.trim().isNotEmpty;
+
+  List<UnifiedLibraryItem> _selectedItemsFromAll(
+    List<UnifiedLibraryItem> allItems,
+  ) {
+    final itemsById = {for (final item in allItems) item.id: item};
+    return _selectedIds
+        .map((id) => itemsById[id])
+        .whereType<UnifiedLibraryItem>()
+        .toList(growable: false);
+  }
+
+  bool _isLocalOnlySelection(List<UnifiedLibraryItem> allItems) {
+    final selectedItems = _selectedItemsFromAll(allItems);
+    return selectedItems.isNotEmpty &&
+        selectedItems.every((item) => item.localItem != null);
+  }
+
+  Future<void> _safeDeleteTempFile(String path) async {
+    try {
+      final file = File(path);
+      if (await file.exists()) {
+        await file.delete();
+      }
+    } catch (_) {}
+  }
+
+  Future<void> _cleanupTempFileAndParentDir(String path) async {
+    await _safeDeleteTempFile(path);
+    try {
+      final parent = File(path).parent;
+      if (await parent.exists()) {
+        await parent.delete();
+      }
+    } catch (_) {}
+  }
+
+  Future<bool> _applyQueueFfmpegReEnrichResult(
+    LocalLibraryItem item,
+    Map<String, dynamic> result,
+  ) async {
+    final tempPath = result['temp_path'] as String?;
+    final safUri = result['saf_uri'] as String?;
+    final ffmpegTarget = _hasTextValue(tempPath) ? tempPath! : item.filePath;
+    final downloadedCoverPath = result['cover_path'] as String?;
+    String? effectiveCoverPath = downloadedCoverPath;
+    String? extractedCoverPath;
+
+    if (!_hasTextValue(effectiveCoverPath)) {
+      try {
+        final tempDir = await Directory.systemTemp.createTemp(
+          'reenrich_cover_',
+        );
+        final coverOutput = '${tempDir.path}${Platform.pathSeparator}cover.jpg';
+        final extracted = await PlatformBridge.extractCoverToFile(
+          ffmpegTarget,
+          coverOutput,
+        );
+        if (extracted['error'] == null) {
+          effectiveCoverPath = coverOutput;
+          extractedCoverPath = coverOutput;
+        } else {
+          try {
+            await tempDir.delete(recursive: true);
+          } catch (_) {}
+        }
+      } catch (_) {}
+    }
+
+    final metadata = (result['metadata'] as Map<String, dynamic>?)?.map(
+      (k, v) => MapEntry(k, v.toString()),
+    );
+
+    final format = item.format?.toLowerCase();
+    final lowerPath = item.filePath.toLowerCase();
+    final isMp3 = format == 'mp3' || lowerPath.endsWith('.mp3');
+    final isOpus =
+        format == 'opus' ||
+        format == 'ogg' ||
+        lowerPath.endsWith('.opus') ||
+        lowerPath.endsWith('.ogg');
+
+    String? ffmpegResult;
+    if (isMp3) {
+      ffmpegResult = await FFmpegService.embedMetadataToMp3(
+        mp3Path: ffmpegTarget,
+        coverPath: effectiveCoverPath,
+        metadata: metadata,
+      );
+    } else if (isOpus) {
+      ffmpegResult = await FFmpegService.embedMetadataToOpus(
+        opusPath: ffmpegTarget,
+        coverPath: effectiveCoverPath,
+        metadata: metadata,
+      );
+    }
+
+    if (ffmpegResult != null &&
+        _hasTextValue(tempPath) &&
+        _hasTextValue(safUri)) {
+      final ok = await PlatformBridge.writeTempToSaf(ffmpegResult, safUri!);
+      if (!ok) {
+        if (_hasTextValue(downloadedCoverPath)) {
+          await _safeDeleteTempFile(downloadedCoverPath!);
+        }
+        if (_hasTextValue(extractedCoverPath)) {
+          await _cleanupTempFileAndParentDir(extractedCoverPath!);
+        }
+        await _safeDeleteTempFile(tempPath!);
+        return false;
+      }
+    }
+
+    if (_hasTextValue(downloadedCoverPath)) {
+      await _safeDeleteTempFile(downloadedCoverPath!);
+    }
+    if (_hasTextValue(extractedCoverPath)) {
+      await _cleanupTempFileAndParentDir(extractedCoverPath!);
+    }
+    if (_hasTextValue(tempPath)) {
+      await _safeDeleteTempFile(tempPath!);
+    }
+
+    return ffmpegResult != null;
+  }
+
+  Future<bool> _reEnrichQueueLocalTrack(LocalLibraryItem item) async {
+    final durationMs = (item.duration ?? 0) * 1000;
+    final request = <String, dynamic>{
+      'file_path': item.filePath,
+      'cover_url': '',
+      'max_quality': true,
+      'embed_lyrics': true,
+      'spotify_id': '',
+      'track_name': item.trackName,
+      'artist_name': item.artistName,
+      'album_name': item.albumName,
+      'album_artist': item.albumArtist ?? item.artistName,
+      'track_number': item.trackNumber ?? 0,
+      'disc_number': item.discNumber ?? 0,
+      'release_date': item.releaseDate ?? '',
+      'isrc': item.isrc ?? '',
+      'genre': item.genre ?? '',
+      'label': '',
+      'copyright': '',
+      'duration_ms': durationMs,
+      'search_online': true,
+    };
+
+    final result = await PlatformBridge.reEnrichFile(request);
+    final method = result['method'] as String?;
+    if (method == 'native') {
+      return true;
+    }
+    if (method == 'ffmpeg') {
+      return _applyQueueFfmpegReEnrichResult(item, result);
+    }
+    return false;
+  }
+
+  Future<void> _reEnrichSelectedLocalFromQueue(
+    List<UnifiedLibraryItem> allItems,
+  ) async {
+    final selectedItems = _selectedItemsFromAll(allItems);
+    final selectedLocalItems = selectedItems
+        .map((item) => item.localItem)
+        .whereType<LocalLibraryItem>()
+        .toList(growable: false);
+
+    if (selectedLocalItems.isEmpty) {
+      return;
+    }
+
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text(context.l10n.trackReEnrich),
+        content: Text(
+          '${context.l10n.trackReEnrichOnlineSubtitle}\n\n'
+          '${context.l10n.downloadedAlbumSelectedCount(selectedLocalItems.length)}',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: Text(context.l10n.dialogCancel),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: Text(context.l10n.trackReEnrich),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed != true || !mounted) {
+      return;
+    }
+
+    var successCount = 0;
+    final total = selectedLocalItems.length;
+
+    for (var i = 0; i < total; i++) {
+      if (!mounted) break;
+      final item = selectedLocalItems[i];
+
+      ScaffoldMessenger.of(context).clearSnackBars();
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            '${context.l10n.trackReEnrichProgress} (${i + 1}/$total)',
+          ),
+          duration: const Duration(seconds: 30),
+        ),
+      );
+
+      try {
+        final ok = await _reEnrichQueueLocalTrack(item);
+        if (ok) {
+          successCount++;
+        }
+      } catch (_) {}
+    }
+
+    if (!mounted) {
+      return;
+    }
+
+    final localLibraryPath = ref.read(settingsProvider).localLibraryPath.trim();
+    try {
+      if (localLibraryPath.isNotEmpty &&
+          !ref.read(localLibraryProvider).isScanning) {
+        await ref
+            .read(localLibraryProvider.notifier)
+            .startScan(localLibraryPath);
+      } else {
+        await ref.read(localLibraryProvider.notifier).reloadFromStorage();
+      }
+    } catch (_) {
+      await ref.read(localLibraryProvider.notifier).reloadFromStorage();
+    }
+
+    _exitSelectionMode();
+
+    if (!mounted) {
+      return;
+    }
+
+    ScaffoldMessenger.of(context).clearSnackBars();
+    final failedCount = total - successCount;
+    final summary = failedCount <= 0
+        ? '${context.l10n.trackReEnrichSuccess} ($successCount/$total)'
+        : '${context.l10n.trackReEnrichSuccess} ($successCount/$total) • Failed: $failedCount';
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(SnackBar(content: Text(summary)));
+  }
+
   /// Share selected tracks via system share sheet
   Future<void> _shareSelected(List<UnifiedLibraryItem> allItems) async {
     final itemsById = {for (final item in allItems) item.id: item};
@@ -2966,9 +3227,7 @@ class _QueueTabState extends ConsumerState<QueueTab> {
 
     // Share regular files via SharePlus
     if (filesToShare.isNotEmpty) {
-      await SharePlus.instance.share(
-        ShareParams(files: filesToShare),
-      );
+      await SharePlus.instance.share(ShareParams(files: filesToShare));
     }
   }
 
@@ -3038,8 +3297,9 @@ class _QueueTabState extends ConsumerState<QueueTab> {
                               if (selected) {
                                 setSheetState(() {
                                   selectedFormat = format;
-                                  selectedBitrate =
-                                      format == 'Opus' ? '128k' : '320k';
+                                  selectedBitrate = format == 'Opus'
+                                      ? '128k'
+                                      : '320k';
                                 });
                               }
                             },
@@ -3132,10 +3392,10 @@ class _QueueTabState extends ConsumerState<QueueTab> {
       final ext = nameToCheck.endsWith('.flac')
           ? 'FLAC'
           : nameToCheck.endsWith('.mp3')
-              ? 'MP3'
-              : (nameToCheck.endsWith('.opus') || nameToCheck.endsWith('.ogg'))
-                  ? 'Opus'
-                  : null;
+          ? 'MP3'
+          : (nameToCheck.endsWith('.opus') || nameToCheck.endsWith('.ogg'))
+          ? 'Opus'
+          : null;
       if (ext != null && ext != targetFormat) {
         selectedItems.add(item);
       }
@@ -3144,9 +3404,7 @@ class _QueueTabState extends ConsumerState<QueueTab> {
     if (selectedItems.isEmpty) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(context.l10n.selectionConvertNoConvertible),
-          ),
+          SnackBar(content: Text(context.l10n.selectionConvertNoConvertible)),
         );
       }
       return;
@@ -3182,6 +3440,8 @@ class _QueueTabState extends ConsumerState<QueueTab> {
     int successCount = 0;
     final total = selectedItems.length;
     final historyDb = HistoryDatabase.instance;
+    final newQuality =
+        '${targetFormat.toUpperCase()} ${bitrate.trim().toLowerCase()}';
 
     for (int i = 0; i < total; i++) {
       if (!mounted) break;
@@ -3205,8 +3465,7 @@ class _QueueTabState extends ConsumerState<QueueTab> {
           'ALBUM': item.albumName,
         };
         try {
-          final result =
-              await PlatformBridge.readFileMetadata(item.filePath);
+          final result = await PlatformBridge.readFileMetadata(item.filePath);
           if (result['error'] == null) {
             result.forEach((key, value) {
               if (key == 'error' || value == null) return;
@@ -3238,8 +3497,9 @@ class _QueueTabState extends ConsumerState<QueueTab> {
         String? safTempPath;
 
         if (isSaf) {
-          safTempPath =
-              await PlatformBridge.copyContentUriToTemp(item.filePath);
+          safTempPath = await PlatformBridge.copyContentUriToTemp(
+            item.filePath,
+          );
           if (safTempPath == null) continue;
           workingPath = safTempPath;
         }
@@ -3278,10 +3538,12 @@ class _QueueTabState extends ConsumerState<QueueTab> {
           if (treeUri != null && treeUri.isNotEmpty) {
             final oldFileName = hi.safFileName ?? '';
             final dotIdx = oldFileName.lastIndexOf('.');
-            final baseName =
-                dotIdx > 0 ? oldFileName.substring(0, dotIdx) : oldFileName;
-            final newExt =
-                targetFormat.toLowerCase() == 'opus' ? '.opus' : '.mp3';
+            final baseName = dotIdx > 0
+                ? oldFileName.substring(0, dotIdx)
+                : oldFileName;
+            final newExt = targetFormat.toLowerCase() == 'opus'
+                ? '.opus'
+                : '.mp3';
             final newFileName = '$baseName$newExt';
             final mimeType = targetFormat.toLowerCase() == 'opus'
                 ? 'audio/opus'
@@ -3317,6 +3579,8 @@ class _QueueTabState extends ConsumerState<QueueTab> {
               hi.id,
               safUri,
               newSafFileName: newFileName,
+              newQuality: newQuality,
+              clearAudioSpecs: true,
             );
           }
           // Cleanup temp files
@@ -3341,7 +3605,8 @@ class _QueueTabState extends ConsumerState<QueueTab> {
           final docIdx = pathSegments.indexOf('document');
           if (treeIdx >= 0 && treeIdx + 1 < pathSegments.length) {
             final treeId = pathSegments[treeIdx + 1];
-            treeUri = 'content://${uri.authority}/tree/${Uri.encodeComponent(treeId)}';
+            treeUri =
+                'content://${uri.authority}/tree/${Uri.encodeComponent(treeId)}';
           }
           if (docIdx >= 0 && docIdx + 1 < pathSegments.length) {
             final docPath = Uri.decodeFull(pathSegments[docIdx + 1]);
@@ -3353,9 +3618,13 @@ class _QueueTabState extends ConsumerState<QueueTab> {
                   : '';
               if (treeId.isNotEmpty && docPath.startsWith(treeId)) {
                 final afterTree = docPath.substring(treeId.length);
-                final trimmed = afterTree.startsWith('/') ? afterTree.substring(1) : afterTree;
+                final trimmed = afterTree.startsWith('/')
+                    ? afterTree.substring(1)
+                    : afterTree;
                 final lastSlash = trimmed.lastIndexOf('/');
-                relativeDir = lastSlash >= 0 ? trimmed.substring(0, lastSlash) : '';
+                relativeDir = lastSlash >= 0
+                    ? trimmed.substring(0, lastSlash)
+                    : '';
               }
             } else {
               oldFileName = docPath;
@@ -3364,10 +3633,16 @@ class _QueueTabState extends ConsumerState<QueueTab> {
 
           if (treeUri != null && oldFileName.isNotEmpty) {
             final dotIdx = oldFileName.lastIndexOf('.');
-            final baseName = dotIdx > 0 ? oldFileName.substring(0, dotIdx) : oldFileName;
-            final newExt = targetFormat.toLowerCase() == 'opus' ? '.opus' : '.mp3';
+            final baseName = dotIdx > 0
+                ? oldFileName.substring(0, dotIdx)
+                : oldFileName;
+            final newExt = targetFormat.toLowerCase() == 'opus'
+                ? '.opus'
+                : '.mp3';
             final newFileName = '$baseName$newExt';
-            final mimeType = targetFormat.toLowerCase() == 'opus' ? 'audio/opus' : 'audio/mpeg';
+            final mimeType = targetFormat.toLowerCase() == 'opus'
+                ? 'audio/opus'
+                : 'audio/mpeg';
 
             final safUri = await PlatformBridge.createSafFileFromPath(
               treeUri: treeUri,
@@ -3378,27 +3653,39 @@ class _QueueTabState extends ConsumerState<QueueTab> {
             );
 
             if (safUri == null || safUri.isEmpty) {
-              try { await File(newPath).delete(); } catch (_) {}
+              try {
+                await File(newPath).delete();
+              } catch (_) {}
               if (safTempPath != null) {
-                try { await File(safTempPath).delete(); } catch (_) {}
+                try {
+                  await File(safTempPath).delete();
+                } catch (_) {}
               }
               continue;
             }
 
-            try { await PlatformBridge.safDelete(item.filePath); } catch (_) {}
+            try {
+              await PlatformBridge.safDelete(item.filePath);
+            } catch (_) {}
             await LibraryDatabase.instance.deleteByPath(item.filePath);
           }
 
           // Cleanup temp files
-          try { await File(newPath).delete(); } catch (_) {}
+          try {
+            await File(newPath).delete();
+          } catch (_) {}
           if (safTempPath != null) {
-            try { await File(safTempPath).delete(); } catch (_) {}
+            try {
+              await File(safTempPath).delete();
+            } catch (_) {}
           }
         } else if (item.historyItem != null) {
           // Regular file - update history path
           await historyDb.updateFilePath(
             item.historyItem!.id,
             newPath,
+            newQuality: newQuality,
+            clearAudioSpecs: true,
           );
         } else if (item.localItem != null) {
           // Regular local library file - delete old db entry, rescan picks up new file
@@ -3443,6 +3730,7 @@ class _QueueTabState extends ConsumerState<QueueTab> {
     final selectedCount = _selectedIds.length;
     final allSelected =
         selectedCount == unifiedItems.length && unifiedItems.isNotEmpty;
+    final localOnlySelection = _isLocalOnlySelection(unifiedItems);
 
     return Container(
       decoration: BoxDecoration(
@@ -3526,15 +3814,21 @@ class _QueueTabState extends ConsumerState<QueueTab> {
 
               const SizedBox(height: 12),
 
-              // Action buttons row: Share, Convert, Delete
+              // Action buttons row: Share/Re-enrich, Convert, Delete
               Row(
                 children: [
                   Expanded(
                     child: _SelectionActionButton(
-                      icon: Icons.share_outlined,
-                      label: context.l10n.selectionShareCount(selectedCount),
+                      icon: localOnlySelection
+                          ? Icons.auto_fix_high_outlined
+                          : Icons.share_outlined,
+                      label: localOnlySelection
+                          ? '${context.l10n.trackReEnrich} ($selectedCount)'
+                          : context.l10n.selectionShareCount(selectedCount),
                       onPressed: selectedCount > 0
-                          ? () => _shareSelected(unifiedItems)
+                          ? () => localOnlySelection
+                                ? _reEnrichSelectedLocalFromQueue(unifiedItems)
+                                : _shareSelected(unifiedItems)
                           : null,
                       colorScheme: colorScheme,
                     ),

@@ -14,6 +14,13 @@ func openOutputForWrite(outputPath string, outputFD int) (*os.File, error) {
 	if isFDOutput(outputFD) {
 		return os.NewFile(uintptr(outputFD), fmt.Sprintf("saf_fd_%d", outputFD)), nil
 	}
+
+	path := strings.TrimSpace(outputPath)
+	if strings.HasPrefix(path, "/proc/self/fd/") {
+		// Re-open procfs fd path instead of taking ownership of raw detached fd.
+		return os.OpenFile(path, os.O_WRONLY|os.O_TRUNC, 0)
+	}
+
 	return os.Create(outputPath)
 }
 

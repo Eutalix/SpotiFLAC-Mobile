@@ -174,7 +174,6 @@ class _RecentDonorsCard extends StatelessWidget {
       'laflame',
       'Elias el Autentico',
       'Faylyne',
-      'Jul',
     ];
 
     // Match SettingsGroup color logic
@@ -363,7 +362,8 @@ int _cr(String v) {
   for (final c in v.codeUnits) { r = (r * 31 + c) & 0x7FFFFFFF; }
   return r;
 }
-const _cv = {998370};
+// Highlighted supporters (hashes of names): Julian, J.
+const _cv = {1825257268, 1035};
 
 class _SupporterChip extends StatelessWidget {
   final String name;
@@ -374,15 +374,19 @@ class _SupporterChip extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final e = _cv.contains(_cr(name));
+    const goldChipColor = Color(0xFFFFF8DC);
+    const goldAccentColor = Color(0xFFB8860B);
+    const goldDarkChipColor = Color(0xFF3A3000);
+
     final chipColor = e
-        ? const Color(0xFFFFF3E0)
+        ? goldChipColor
         : colorScheme.secondaryContainer;
     final accentColor = e
-        ? const Color(0xFFFF8F00)
+        ? goldAccentColor
         : colorScheme.primary;
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final effectiveChipColor = e && isDark
-        ? const Color(0xFF3E2723)
+        ? goldDarkChipColor
         : chipColor;
 
     return Material(
