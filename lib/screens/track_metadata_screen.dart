@@ -17,6 +17,7 @@ import 'package:spotiflac_android/services/platform_bridge.dart';
 import 'package:spotiflac_android/services/ffmpeg_service.dart';
 import 'package:spotiflac_android/l10n/l10n.dart';
 import 'package:spotiflac_android/utils/logger.dart';
+import 'package:spotiflac_android/utils/string_utils.dart';
 
 final _log = AppLogger('TrackMetadata');
 
@@ -181,14 +182,6 @@ class _TrackMetadataScreenState extends ConsumerState<TrackMetadataScreen> {
     return cached.previewPath;
   }
 
-  String? _normalizeOptionalString(String? value) {
-    if (value == null) return null;
-    final trimmed = value.trim();
-    if (trimmed.isEmpty) return null;
-    if (trimmed.toLowerCase() == 'null') return null;
-    return trimmed;
-  }
-
   @override
   void initState() {
     super.initState();
@@ -206,7 +199,8 @@ class _TrackMetadataScreenState extends ConsumerState<TrackMetadataScreen> {
 
   void _onScroll() {
     final expandedHeight = _calculateExpandedHeight(context);
-    final shouldShow = _scrollController.offset > (expandedHeight - kToolbarHeight - 20);
+    final shouldShow =
+        _scrollController.offset > (expandedHeight - kToolbarHeight - 20);
     if (shouldShow != _showTitleInAppBar) {
       setState(() => _showTitleInAppBar = shouldShow);
     }
@@ -382,7 +376,7 @@ class _TrackMetadataScreenState extends ConsumerState<TrackMetadataScreen> {
   String? get albumArtist {
     final edited = _editedMetadata?['album_artist']?.toString();
     if (edited != null && edited.isNotEmpty) return edited;
-    return _normalizeOptionalString(
+    return normalizeOptionalString(
       _isLocalItem
           ? _localLibraryItem!.albumArtist
           : _downloadItem!.albumArtist,
@@ -720,10 +714,7 @@ class _TrackMetadataScreenState extends ConsumerState<TrackMetadataScreen> {
                 const SizedBox(height: 4),
                 Text(
                   albumName,
-                  style: const TextStyle(
-                    color: Colors.white54,
-                    fontSize: 14,
-                  ),
+                  style: const TextStyle(color: Colors.white54, fontSize: 14),
                   textAlign: TextAlign.center,
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,

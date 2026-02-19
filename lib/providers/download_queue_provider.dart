@@ -18,21 +18,16 @@ import 'package:spotiflac_android/services/notification_service.dart';
 import 'package:spotiflac_android/services/history_database.dart';
 import 'package:spotiflac_android/utils/logger.dart';
 import 'package:spotiflac_android/utils/file_access.dart';
+import 'package:spotiflac_android/utils/string_utils.dart';
 
 final _log = AppLogger('DownloadQueue');
 final _historyLog = AppLogger('DownloadHistory');
 
-String? _normalizeOptionalString(String? value) {
-  if (value == null) return null;
-  final trimmed = value.trim();
-  if (trimmed.isEmpty) return null;
-  if (trimmed.toLowerCase() == 'null') return null;
-  return trimmed;
-}
-
 final _invalidFolderChars = RegExp(r'[<>:"/\\|?*]');
 final _trailingDotsRegex = RegExp(r'\.+$');
 final _yearRegex = RegExp(r'^(\d{4})');
+const _defaultOutputFolderName = 'SpotiFLAC';
+const _defaultAndroidMusicSubpath = 'Music/$_defaultOutputFolderName';
 
 class DownloadHistoryItem {
   final String id;
@@ -126,7 +121,7 @@ class DownloadHistoryItem {
         trackName: json['trackName'] as String,
         artistName: json['artistName'] as String,
         albumName: json['albumName'] as String,
-        albumArtist: _normalizeOptionalString(json['albumArtist'] as String?),
+        albumArtist: normalizeOptionalString(json['albumArtist'] as String?),
         coverUrl: json['coverUrl'] as String?,
         filePath: json['filePath'] as String,
         storageMode: json['storageMode'] as String?,
@@ -451,14 +446,14 @@ class DownloadHistoryNotifier extends Notifier<DownloadHistoryState> {
         ? item
         : item.copyWith(
             genre:
-                _normalizeOptionalString(item.genre) ??
-                _normalizeOptionalString(existing.genre),
+                normalizeOptionalString(item.genre) ??
+                normalizeOptionalString(existing.genre),
             label:
-                _normalizeOptionalString(item.label) ??
-                _normalizeOptionalString(existing.label),
+                normalizeOptionalString(item.label) ??
+                normalizeOptionalString(existing.label),
             copyright:
-                _normalizeOptionalString(item.copyright) ??
-                _normalizeOptionalString(existing.copyright),
+                normalizeOptionalString(item.copyright) ??
+                normalizeOptionalString(existing.copyright),
           );
 
     if (existing != null) {
@@ -1177,41 +1172,50 @@ class DownloadQueueNotifier extends Notifier<DownloadQueueState> {
     _lastNotifQueueCount = -1;
   }
 
+  Directory _defaultDocumentsOutputDir(String documentsPath) {
+    return Directory('$documentsPath/$_defaultOutputFolderName');
+  }
+
+  Directory _defaultAndroidMusicOutputDir(String storageRootPath) {
+    return Directory('$storageRootPath/$_defaultAndroidMusicSubpath');
+  }
+
+  Future<Directory> _ensureDefaultDocumentsOutputDir() async {
+    final dir = await getApplicationDocumentsDirectory();
+    final musicDir = _defaultDocumentsOutputDir(dir.path);
+    if (!await musicDir.exists()) {
+      await musicDir.create(recursive: true);
+    }
+    return musicDir;
+  }
+
+  Future<Directory?> _ensureDefaultAndroidMusicOutputDir() async {
+    final dir = await getExternalStorageDirectory();
+    if (dir == null) return null;
+
+    final musicDir = _defaultAndroidMusicOutputDir(
+      dir.parent.parent.parent.parent.path,
+    );
+    if (!await musicDir.exists()) {
+      await musicDir.create(recursive: true);
+    }
+    return musicDir;
+  }
+
   Future<void> _initOutputDir() async {
     if (state.outputDir.isEmpty) {
       try {
         if (Platform.isIOS) {
-          final dir = await getApplicationDocumentsDirectory();
-          final musicDir = Directory('${dir.path}/SpotiFLAC');
-          if (!await musicDir.exists()) {
-            await musicDir.create(recursive: true);
-          }
+          final musicDir = await _ensureDefaultDocumentsOutputDir();
           state = state.copyWith(outputDir: musicDir.path);
         } else {
-          final dir = await getExternalStorageDirectory();
-          if (dir != null) {
-            final musicDir = Directory(
-              '${dir.parent.parent.parent.parent.path}/Music/SpotiFLAC',
-            );
-            if (!await musicDir.exists()) {
-              await musicDir.create(recursive: true);
-            }
-            state = state.copyWith(outputDir: musicDir.path);
-          } else {
-            final docDir = await getApplicationDocumentsDirectory();
-            final musicDir = Directory('${docDir.path}/SpotiFLAC');
-            if (!await musicDir.exists()) {
-              await musicDir.create(recursive: true);
-            }
-            state = state.copyWith(outputDir: musicDir.path);
-          }
+          final musicDir =
+              await _ensureDefaultAndroidMusicOutputDir() ??
+              await _ensureDefaultDocumentsOutputDir();
+          state = state.copyWith(outputDir: musicDir.path);
         }
       } catch (e) {
-        final dir = await getApplicationDocumentsDirectory();
-        final musicDir = Directory('${dir.path}/SpotiFLAC');
-        if (!await musicDir.exists()) {
-          await musicDir.create(recursive: true);
-        }
+        final musicDir = await _ensureDefaultDocumentsOutputDir();
         state = state.copyWith(outputDir: musicDir.path);
       }
     }
@@ -1245,7 +1249,7 @@ class DownloadQueueNotifier extends Notifier<DownloadQueueState> {
     bool filterContributingArtistsInAlbumArtist = false,
   }) async {
     String baseDir = state.outputDir;
-    final normalizedAlbumArtist = _normalizeOptionalString(track.albumArtist);
+    final normalizedAlbumArtist = normalizeOptionalString(track.albumArtist);
     var folderArtist = useAlbumArtistForFolders
         ? normalizedAlbumArtist ?? track.artistName
         : track.artistName;
@@ -1363,7 +1367,7 @@ class DownloadQueueNotifier extends Notifier<DownloadQueueState> {
 
   String _resolveAlbumArtistForMetadata(Track track, AppSettings settings) {
     var albumArtist =
-        _normalizeOptionalString(track.albumArtist) ?? track.artistName;
+        normalizeOptionalString(track.albumArtist) ?? track.artistName;
     if (settings.filterContributingArtistsInAlbumArtist) {
       albumArtist = _extractPrimaryArtist(albumArtist);
     }
@@ -1396,7 +1400,7 @@ class DownloadQueueNotifier extends Notifier<DownloadQueueState> {
     bool usePrimaryArtistOnly = false,
     bool filterContributingArtistsInAlbumArtist = false,
   }) async {
-    final normalizedAlbumArtist = _normalizeOptionalString(track.albumArtist);
+    final normalizedAlbumArtist = normalizeOptionalString(track.albumArtist);
     var folderArtist = useAlbumArtistForFolders
         ? normalizedAlbumArtist ?? track.artistName
         : track.artistName;
@@ -1902,10 +1906,10 @@ class DownloadQueueNotifier extends Notifier<DownloadQueueState> {
   ) {
     final backendTrackNum = _parsePositiveInt(backendResult['track_number']);
     final backendDiscNum = _parsePositiveInt(backendResult['disc_number']);
-    final backendYear = _normalizeOptionalString(
+    final backendYear = normalizeOptionalString(
       backendResult['release_date'] as String?,
     );
-    final backendAlbum = _normalizeOptionalString(
+    final backendAlbum = normalizeOptionalString(
       backendResult['album'] as String?,
     );
 
@@ -2539,11 +2543,7 @@ class DownloadQueueNotifier extends Notifier<DownloadQueueState> {
           'iOS: iCloud Drive path detected, falling back to app Documents folder',
         );
         _log.w('Go backend cannot write to iCloud Drive due to iOS sandboxing');
-        final dir = await getApplicationDocumentsDirectory();
-        final musicDir = Directory('${dir.path}/SpotiFLAC');
-        if (!await musicDir.exists()) {
-          await musicDir.create(recursive: true);
-        }
+        final musicDir = await _ensureDefaultDocumentsOutputDir();
         state = state.copyWith(outputDir: musicDir.path);
         ref.read(settingsProvider.notifier).setDownloadDirectory(musicDir.path);
       } else if (!isValidIosWritablePath(state.outputDir)) {
@@ -2561,11 +2561,7 @@ class DownloadQueueNotifier extends Notifier<DownloadQueueState> {
 
     if (!isSafMode && state.outputDir.isEmpty) {
       _log.d('Using fallback directory...');
-      final dir = await getApplicationDocumentsDirectory();
-      final musicDir = Directory('${dir.path}/SpotiFLAC');
-      if (!await musicDir.exists()) {
-        await musicDir.create(recursive: true);
-      }
+      final musicDir = await _ensureDefaultDocumentsOutputDir();
       state = state.copyWith(outputDir: musicDir.path);
     }
 
@@ -2964,10 +2960,10 @@ class DownloadQueueNotifier extends Notifier<DownloadQueueState> {
             }
 
             // Enrich track metadata from Deezer response (release_date, isrc, etc.)
-            final deezerReleaseDate = _normalizeOptionalString(
+            final deezerReleaseDate = normalizeOptionalString(
               trackData['release_date'] as String?,
             );
-            final deezerIsrc = _normalizeOptionalString(
+            final deezerIsrc = normalizeOptionalString(
               trackData['isrc'] as String?,
             );
             final deezerTrackNum = trackData['track_number'] as int?;
@@ -4045,17 +4041,17 @@ class DownloadQueueNotifier extends Notifier<DownloadQueueState> {
           final backendLabel = result['label'] as String?;
           final backendCopyright = result['copyright'] as String?;
           final effectiveGenre =
-              _normalizeOptionalString(backendGenre) ??
-              _normalizeOptionalString(genre) ??
-              _normalizeOptionalString(existingInHistory?.genre);
+              normalizeOptionalString(backendGenre) ??
+              normalizeOptionalString(genre) ??
+              normalizeOptionalString(existingInHistory?.genre);
           final effectiveLabel =
-              _normalizeOptionalString(backendLabel) ??
-              _normalizeOptionalString(label) ??
-              _normalizeOptionalString(existingInHistory?.label);
+              normalizeOptionalString(backendLabel) ??
+              normalizeOptionalString(label) ??
+              normalizeOptionalString(existingInHistory?.label);
           final effectiveCopyright =
-              _normalizeOptionalString(backendCopyright) ??
-              _normalizeOptionalString(copyright) ??
-              _normalizeOptionalString(existingInHistory?.copyright);
+              normalizeOptionalString(backendCopyright) ??
+              normalizeOptionalString(copyright) ??
+              normalizeOptionalString(existingInHistory?.copyright);
 
           _log.d('Saving to history - coverUrl: ${trackToDownload.coverUrl}');
 

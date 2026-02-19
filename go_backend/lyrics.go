@@ -651,6 +651,22 @@ func parseSyncedLyrics(syncedLyrics string) []LyricsLine {
 	return lines
 }
 
+func plainTextLyricsLines(rawLyrics string) []LyricsLine {
+	var lines []LyricsLine
+	for _, line := range strings.Split(rawLyrics, "\n") {
+		trimmed := strings.TrimSpace(line)
+		if trimmed == "" {
+			continue
+		}
+		lines = append(lines, LyricsLine{
+			StartTimeMs: 0,
+			Words:       trimmed,
+			EndTimeMs:   0,
+		})
+	}
+	return lines
+}
+
 func lyricsHasUsableText(lyrics *LyricsResponse) bool {
 	if lyrics == nil {
 		return false
