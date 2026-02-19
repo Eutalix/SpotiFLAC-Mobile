@@ -3,6 +3,7 @@ import 'dart:io';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:spotiflac_android/l10n/l10n.dart';
 import 'package:spotiflac_android/providers/download_queue_provider.dart';
@@ -32,6 +33,10 @@ class _LibraryTracksFolderScreenState
     extends ConsumerState<LibraryTracksFolderScreen> {
   bool _showTitleInAppBar = false;
   final ScrollController _scrollController = ScrollController();
+
+  // ── Multi-select state ──
+  bool _isSelectionMode = false;
+  final Set<String> _selectedKeys = {};
 
   @override
   void initState() {
@@ -101,6 +106,112 @@ class _LibraryTracksFolderScreenState
     return url;
   }
 
+  // ── Selection helpers ──
+
+  void _enterSelectionMode(String key) {
+    HapticFeedback.mediumImpact();
+    setState(() {
+      _isSelectionMode = true;
+      _selectedKeys.add(key);
+    });
+  }
+
+  void _exitSelectionMode() {
+    setState(() {
+      _isSelectionMode = false;
+      _selectedKeys.clear();
+    });
+  }
+
+  void _toggleSelection(String key) {
+    setState(() {
+      if (_selectedKeys.contains(key)) {
+        _selectedKeys.remove(key);
+        if (_selectedKeys.isEmpty) {
+          _isSelectionMode = false;
+        }
+      } else {
+        _selectedKeys.add(key);
+      }
+    });
+  }
+
+  void _selectAll(List<CollectionTrackEntry> entries) {
+    setState(() {
+      _selectedKeys.addAll(entries.map((e) => e.key));
+    });
+  }
+
+  // ── Batch actions ──
+
+  Future<void> _removeSelected(List<CollectionTrackEntry> entries) async {
+    final keysToRemove = _selectedKeys.toSet();
+    if (keysToRemove.isEmpty) return;
+
+    final count = keysToRemove.length;
+    final notifier = ref.read(libraryCollectionsProvider.notifier);
+
+    for (final key in keysToRemove) {
+      switch (widget.mode) {
+        case LibraryTracksFolderMode.wishlist:
+          await notifier.removeFromWishlist(key);
+          break;
+        case LibraryTracksFolderMode.loved:
+          await notifier.removeFromLoved(key);
+          break;
+        case LibraryTracksFolderMode.playlist:
+          if (widget.playlistId != null) {
+            await notifier.removeTrackFromPlaylist(widget.playlistId!, key);
+          }
+          break;
+      }
+    }
+
+    _exitSelectionMode();
+
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(
+          context.l10n.selectionSelected(count),
+        ),
+      ),
+    );
+  }
+
+  void _downloadSelected(List<CollectionTrackEntry> entries) {
+    final settings = ref.read(settingsProvider);
+    final queueNotifier = ref.read(downloadQueueProvider.notifier);
+    var count = 0;
+
+    for (final entry in entries) {
+      if (!_selectedKeys.contains(entry.key)) continue;
+      queueNotifier.addToQueue(entry.track, settings.defaultService);
+      count++;
+    }
+
+    _exitSelectionMode();
+
+    if (!mounted || count == 0) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(
+          context.l10n.selectionSelected(count),
+        ),
+      ),
+    );
+  }
+
+  void _addSelectedToPlaylist(List<CollectionTrackEntry> entries) {
+    final selectedTracks = entries
+        .where((e) => _selectedKeys.contains(e.key))
+        .map((e) => e.track)
+        .toList(growable: false);
+    if (selectedTracks.isEmpty) return;
+
+    showAddTracksToPlaylistSheet(context, ref, selectedTracks);
+  }
+
   @override
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
@@ -133,6 +244,17 @@ class _LibraryTracksFolderScreenState
         break;
     }
 
+    // Stale selection cleanup
+    if (_isSelectionMode) {
+      final validKeys = entries.map((e) => e.key).toSet();
+      _selectedKeys.removeWhere((key) => !validKeys.contains(key));
+      if (_selectedKeys.isEmpty && _isSelectionMode) {
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (mounted) setState(() => _isSelectionMode = false);
+        });
+      }
+    }
+
     final title = switch (widget.mode) {
       LibraryTracksFolderMode.wishlist => context.l10n.collectionWishlist,
       LibraryTracksFolderMode.loved => context.l10n.collectionLoved,
@@ -157,41 +279,246 @@ class _LibraryTracksFolderScreenState
         context.l10n.collectionPlaylistEmptySubtitle,
     };
 
-    return Scaffold(
-      body: CustomScrollView(
-        controller: _scrollController,
-        slivers: [
-          _buildAppBar(context, colorScheme, title, entries, playlist),
-          if (entries.isEmpty)
-            SliverFillRemaining(
-              hasScrollBody: false,
-              child: _EmptyFolderState(
-                title: emptyTitle,
-                subtitle: emptySubtitle,
-              ),
-            )
-          else
-            SliverList(
-              delegate: SliverChildBuilderDelegate((context, index) {
-                final entry = entries[index];
-                return KeyedSubtree(
-                  key: ValueKey(entry.key),
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      _CollectionTrackTile(
-                        entry: entry,
-                        mode: widget.mode,
-                        playlistId: widget.playlistId,
-                      ),
-                      if (index < entries.length - 1) const Divider(height: 1),
-                    ],
+    final bottomPadding = MediaQuery.of(context).padding.bottom;
+
+    return PopScope(
+      canPop: !_isSelectionMode,
+      onPopInvokedWithResult: (didPop, result) {
+        if (!didPop && _isSelectionMode) {
+          _exitSelectionMode();
+        }
+      },
+      child: Scaffold(
+        body: Stack(
+          children: [
+            CustomScrollView(
+              controller: _scrollController,
+              slivers: [
+                _buildAppBar(context, colorScheme, title, entries, playlist),
+                if (entries.isEmpty)
+                  SliverFillRemaining(
+                    hasScrollBody: false,
+                    child: _EmptyFolderState(
+                      title: emptyTitle,
+                      subtitle: emptySubtitle,
+                    ),
+                  )
+                else
+                  SliverList(
+                    delegate: SliverChildBuilderDelegate((context, index) {
+                      final entry = entries[index];
+                      final isSelected = _selectedKeys.contains(entry.key);
+                      return KeyedSubtree(
+                        key: ValueKey(entry.key),
+                        child: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            _CollectionTrackTile(
+                              entry: entry,
+                              mode: widget.mode,
+                              playlistId: widget.playlistId,
+                              isSelectionMode: _isSelectionMode,
+                              isSelected: isSelected,
+                              onTap: _isSelectionMode
+                                  ? () => _toggleSelection(entry.key)
+                                  : null,
+                              onLongPress: _isSelectionMode
+                                  ? null
+                                  : () => _enterSelectionMode(entry.key),
+                            ),
+                            if (index < entries.length - 1)
+                              const Divider(height: 1),
+                          ],
+                        ),
+                      );
+                    }, childCount: entries.length),
                   ),
-                );
-              }, childCount: entries.length),
+                SliverToBoxAdapter(
+                  child: SizedBox(height: _isSelectionMode ? 200 : 32),
+                ),
+              ],
             ),
-          const SliverToBoxAdapter(child: SizedBox(height: 32)),
+
+            // Selection bottom bar
+            AnimatedPositioned(
+              duration: const Duration(milliseconds: 250),
+              curve: Curves.easeOutCubic,
+              left: 0,
+              right: 0,
+              bottom: _isSelectionMode ? 0 : -(280 + bottomPadding),
+              child: _buildSelectionBottomBar(
+                context,
+                colorScheme,
+                entries,
+                bottomPadding,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildSelectionBottomBar(
+    BuildContext context,
+    ColorScheme colorScheme,
+    List<CollectionTrackEntry> entries,
+    double bottomPadding,
+  ) {
+    final selectedCount = _selectedKeys.length;
+    final allSelected = selectedCount == entries.length && entries.isNotEmpty;
+    final isWishlist = widget.mode == LibraryTracksFolderMode.wishlist;
+
+    return Container(
+      decoration: BoxDecoration(
+        color: colorScheme.surfaceContainerHigh,
+        borderRadius: const BorderRadius.vertical(top: Radius.circular(28)),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.15),
+            blurRadius: 12,
+            offset: const Offset(0, -4),
+          ),
         ],
+      ),
+      child: SafeArea(
+        top: false,
+        child: Padding(
+          padding: EdgeInsets.fromLTRB(16, 16, 16, bottomPadding > 0 ? 8 : 16),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              // Drag handle
+              Container(
+                width: 32,
+                height: 4,
+                margin: const EdgeInsets.only(bottom: 16),
+                decoration: BoxDecoration(
+                  color: colorScheme.outlineVariant,
+                  borderRadius: BorderRadius.circular(2),
+                ),
+              ),
+
+              // Header: [X close] [count] [Select All / Deselect]
+              Row(
+                children: [
+                  IconButton.filledTonal(
+                    onPressed: _exitSelectionMode,
+                    icon: const Icon(Icons.close),
+                    style: IconButton.styleFrom(
+                      backgroundColor: colorScheme.surfaceContainerHighest,
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          context.l10n.selectionSelected(selectedCount),
+                          style: Theme.of(context).textTheme.titleMedium
+                              ?.copyWith(fontWeight: FontWeight.bold),
+                        ),
+                        Text(
+                          allSelected
+                              ? context.l10n.selectionAllSelected
+                              : context.l10n.selectionSelectToDelete,
+                          style: Theme.of(context).textTheme.bodySmall
+                              ?.copyWith(color: colorScheme.onSurfaceVariant),
+                        ),
+                      ],
+                    ),
+                  ),
+                  TextButton.icon(
+                    onPressed: () {
+                      if (allSelected) {
+                        _exitSelectionMode();
+                      } else {
+                        _selectAll(entries);
+                      }
+                    },
+                    icon: Icon(
+                      allSelected ? Icons.deselect : Icons.select_all,
+                      size: 20,
+                    ),
+                    label: Text(
+                      allSelected
+                          ? context.l10n.actionDeselect
+                          : context.l10n.actionSelectAll,
+                    ),
+                    style: TextButton.styleFrom(
+                      foregroundColor: colorScheme.primary,
+                    ),
+                  ),
+                ],
+              ),
+
+              const SizedBox(height: 12),
+
+              // Action buttons row
+              Row(
+                children: [
+                  if (isWishlist)
+                    Expanded(
+                      child: _SelectionActionButton(
+                        icon: Icons.download,
+                        label:
+                            '${context.l10n.settingsDownload} ($selectedCount)',
+                        onPressed: selectedCount > 0
+                            ? () => _downloadSelected(entries)
+                            : null,
+                        colorScheme: colorScheme,
+                      ),
+                    ),
+                  if (isWishlist) const SizedBox(width: 8),
+                  Expanded(
+                    child: _SelectionActionButton(
+                      icon: Icons.playlist_add,
+                      label:
+                          '${context.l10n.collectionAddToPlaylist} ($selectedCount)',
+                      onPressed: selectedCount > 0
+                          ? () => _addSelectedToPlaylist(entries)
+                          : null,
+                      colorScheme: colorScheme,
+                    ),
+                  ),
+                ],
+              ),
+
+              const SizedBox(height: 8),
+
+              // Remove button (full width, red)
+              SizedBox(
+                width: double.infinity,
+                child: FilledButton.icon(
+                  onPressed: selectedCount > 0
+                      ? () => _removeSelected(entries)
+                      : null,
+                  icon: const Icon(Icons.remove_circle_outline),
+                  label: Text(
+                    selectedCount > 0
+                        ? '${widget.mode == LibraryTracksFolderMode.playlist ? context.l10n.collectionRemoveFromPlaylist : context.l10n.collectionRemoveFromFolder} ($selectedCount)'
+                        : widget.mode == LibraryTracksFolderMode.playlist
+                            ? context.l10n.collectionRemoveFromPlaylist
+                            : context.l10n.collectionRemoveFromFolder,
+                  ),
+                  style: FilledButton.styleFrom(
+                    backgroundColor: selectedCount > 0
+                        ? colorScheme.error
+                        : colorScheme.surfaceContainerHighest,
+                    foregroundColor: selectedCount > 0
+                        ? colorScheme.onError
+                        : colorScheme.onSurfaceVariant,
+                    padding: const EdgeInsets.symmetric(vertical: 16),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(16),
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
       ),
     );
   }
@@ -250,7 +577,9 @@ class _LibraryTracksFolderScreenState
         duration: const Duration(milliseconds: 200),
         opacity: _showTitleInAppBar ? 1.0 : 0.0,
         child: Text(
-          title,
+          _isSelectionMode
+              ? context.l10n.selectionSelected(_selectedKeys.length)
+              : title,
           style: TextStyle(
             color: colorScheme.onSurface,
             fontWeight: FontWeight.w600,
@@ -261,7 +590,7 @@ class _LibraryTracksFolderScreenState
         ),
       ),
       actions: [
-        if (isPlaylistMode)
+        if (isPlaylistMode && !_isSelectionMode)
           IconButton(
             icon: Container(
               padding: const EdgeInsets.all(8),
@@ -422,9 +751,14 @@ class _LibraryTracksFolderScreenState
             color: Colors.black.withValues(alpha: 0.4),
             shape: BoxShape.circle,
           ),
-          child: const Icon(Icons.arrow_back, color: Colors.white),
+          child: Icon(
+            _isSelectionMode ? Icons.close : Icons.arrow_back,
+            color: Colors.white,
+          ),
         ),
-        onPressed: () => Navigator.pop(context),
+        onPressed: _isSelectionMode
+            ? _exitSelectionMode
+            : () => Navigator.pop(context),
       ),
     );
   }
@@ -511,51 +845,110 @@ class _CollectionTrackTile extends ConsumerWidget {
   final CollectionTrackEntry entry;
   final LibraryTracksFolderMode mode;
   final String? playlistId;
+  final bool isSelectionMode;
+  final bool isSelected;
+  final VoidCallback? onTap;
+  final VoidCallback? onLongPress;
 
   const _CollectionTrackTile({
     required this.entry,
     required this.mode,
     required this.playlistId,
+    this.isSelectionMode = false,
+    this.isSelected = false,
+    this.onTap,
+    this.onLongPress,
   });
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final track = entry.track;
+    final colorScheme = Theme.of(context).colorScheme;
 
-    return ListTile(
-      contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
-      leading: ClipRRect(
-        borderRadius: BorderRadius.circular(8),
-        child: track.coverUrl != null && track.coverUrl!.isNotEmpty
-            ? _buildTrackCover(context, track.coverUrl!, 52)
-            : Container(
-                width: 52,
-                height: 52,
-                color: Theme.of(context).colorScheme.surfaceContainerHighest,
-                child: Icon(
-                  Icons.music_note,
-                  color: Theme.of(context).colorScheme.onSurfaceVariant,
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 8),
+      child: Card(
+        elevation: 0,
+        color: isSelected
+            ? colorScheme.primaryContainer.withValues(alpha: 0.3)
+            : Colors.transparent,
+        margin: const EdgeInsets.symmetric(vertical: 2),
+        child: ListTile(
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(12),
+          ),
+          contentPadding:
+              const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+          leading: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              if (isSelectionMode) ...[
+                Container(
+                  width: 24,
+                  height: 24,
+                  decoration: BoxDecoration(
+                    color: isSelected
+                        ? colorScheme.primary
+                        : Colors.transparent,
+                    shape: BoxShape.circle,
+                    border: Border.all(
+                      color: isSelected
+                          ? colorScheme.primary
+                          : colorScheme.outline,
+                      width: 2,
+                    ),
+                  ),
+                  child: isSelected
+                      ? Icon(
+                          Icons.check,
+                          color: colorScheme.onPrimary,
+                          size: 16,
+                        )
+                      : null,
                 ),
+                const SizedBox(width: 12),
+              ],
+              ClipRRect(
+                borderRadius: BorderRadius.circular(8),
+                child: track.coverUrl != null && track.coverUrl!.isNotEmpty
+                    ? _buildTrackCover(context, track.coverUrl!, 52)
+                    : Container(
+                        width: 52,
+                        height: 52,
+                        color: colorScheme.surfaceContainerHighest,
+                        child: Icon(
+                          Icons.music_note,
+                          color: colorScheme.onSurfaceVariant,
+                        ),
+                      ),
               ),
-      ),
-      title: Text(track.name, maxLines: 1, overflow: TextOverflow.ellipsis),
-      subtitle: Text(
-        track.artistName,
-        maxLines: 1,
-        overflow: TextOverflow.ellipsis,
-      ),
-      trailing: IconButton(
-        icon: Icon(
-          Icons.more_vert,
-          color: Theme.of(context).colorScheme.onSurfaceVariant,
-          size: 20,
+            ],
+          ),
+          title:
+              Text(track.name, maxLines: 1, overflow: TextOverflow.ellipsis),
+          subtitle: Text(
+            track.artistName,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+          ),
+          trailing: isSelectionMode
+              ? null
+              : IconButton(
+                  icon: Icon(
+                    Icons.more_vert,
+                    color: colorScheme.onSurfaceVariant,
+                    size: 20,
+                  ),
+                  onPressed: () => _showTrackOptionsSheet(context, ref),
+                ),
+          onTap: isSelectionMode
+              ? onTap
+              : mode == LibraryTracksFolderMode.wishlist
+                  ? () => _downloadTrack(context, ref)
+                  : () => _navigateToMetadata(context, ref),
+          onLongPress: isSelectionMode ? onTap : onLongPress,
         ),
-        onPressed: () => _showTrackOptionsSheet(context, ref),
       ),
-      onTap: mode == LibraryTracksFolderMode.wishlist
-          ? () => _downloadTrack(context, ref)
-          : () => _navigateToMetadata(context, ref),
-      onLongPress: () => _showTrackOptionsSheet(context, ref),
     );
   }
 
@@ -827,6 +1220,41 @@ class _CollectionOptionTile extends StatelessWidget {
       ),
       title: Text(title, style: const TextStyle(fontWeight: FontWeight.w500)),
       onTap: onTap,
+    );
+  }
+}
+
+class _SelectionActionButton extends StatelessWidget {
+  final IconData icon;
+  final String label;
+  final VoidCallback? onPressed;
+  final ColorScheme colorScheme;
+
+  const _SelectionActionButton({
+    required this.icon,
+    required this.label,
+    required this.onPressed,
+    required this.colorScheme,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return FilledButton.icon(
+      onPressed: onPressed,
+      icon: Icon(icon, size: 18),
+      label: Text(label, maxLines: 1, overflow: TextOverflow.ellipsis),
+      style: FilledButton.styleFrom(
+        backgroundColor: onPressed != null
+            ? colorScheme.primaryContainer
+            : colorScheme.surfaceContainerHighest,
+        foregroundColor: onPressed != null
+            ? colorScheme.onPrimaryContainer
+            : colorScheme.onSurfaceVariant,
+        padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 12),
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(16),
+        ),
+      ),
     );
   }
 }

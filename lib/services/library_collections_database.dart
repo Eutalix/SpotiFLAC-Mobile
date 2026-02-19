@@ -59,6 +59,8 @@ class LibraryCollectionsDatabase {
       version: _dbVersion,
       onConfigure: (db) async {
         await db.execute('PRAGMA foreign_keys = ON');
+        await db.rawQuery('PRAGMA journal_mode = WAL');
+        await db.execute('PRAGMA synchronous = NORMAL');
       },
       onCreate: _createDb,
       onUpgrade: _upgradeDb,

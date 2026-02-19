@@ -135,6 +135,7 @@ class LibraryCollectionsState {
   final Set<String> _wishlistKeys;
   final Set<String> _lovedKeys;
   final Map<String, UserPlaylistCollection> _playlistsById;
+  final Set<String> _allPlaylistTrackKeys;
 
   LibraryCollectionsState({
     this.wishlist = const [],
@@ -144,6 +145,7 @@ class LibraryCollectionsState {
     Set<String>? wishlistKeys,
     Set<String>? lovedKeys,
     Map<String, UserPlaylistCollection>? playlistsById,
+    Set<String>? allPlaylistTrackKeys,
   }) : _wishlistKeys =
            wishlistKeys ?? wishlist.map((entry) => entry.key).toSet(),
        _lovedKeys = lovedKeys ?? loved.map((entry) => entry.key).toSet(),
@@ -151,7 +153,9 @@ class LibraryCollectionsState {
            playlistsById ??
            Map.fromEntries(
              playlists.map((playlist) => MapEntry(playlist.id, playlist)),
-           );
+           ),
+       _allPlaylistTrackKeys =
+           allPlaylistTrackKeys ?? _buildPlaylistTrackKeys(playlists);
 
   int get wishlistCount => wishlist.length;
   int get lovedCount => loved.length;
@@ -185,6 +189,12 @@ class LibraryCollectionsState {
     return playlist.containsTrackKey(trackKey);
   }
 
+  bool isTrackInAnyPlaylist(String trackKey) {
+    return _allPlaylistTrackKeys.contains(trackKey);
+  }
+
+  bool get hasPlaylistTracks => _allPlaylistTrackKeys.isNotEmpty;
+
   LibraryCollectionsState copyWith({
     List<CollectionTrackEntry>? wishlist,
     List<CollectionTrackEntry>? loved,
@@ -206,6 +216,7 @@ class LibraryCollectionsState {
       wishlistKeys: keepWishlistIndex ? _wishlistKeys : null,
       lovedKeys: keepLovedIndex ? _lovedKeys : null,
       playlistsById: keepPlaylistIndex ? _playlistsById : null,
+      allPlaylistTrackKeys: keepPlaylistIndex ? _allPlaylistTrackKeys : null,
     );
   }
 
@@ -243,6 +254,16 @@ class LibraryCollectionsState {
       isLoaded: true,
     );
   }
+}
+
+Set<String> _buildPlaylistTrackKeys(List<UserPlaylistCollection> playlists) {
+  final keys = <String>{};
+  for (final playlist in playlists) {
+    for (final entry in playlist.tracks) {
+      keys.add(entry.key);
+    }
+  }
+  return keys;
 }
 
 class PlaylistAddBatchResult {

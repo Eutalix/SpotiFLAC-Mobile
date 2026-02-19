@@ -102,8 +102,15 @@ func NewExtensionRuntime(ext *LoadedExtension) *ExtensionRuntime {
 		vm:          ext.VM,
 	}
 
-	client := NewHTTPClientWithTimeout(30 * time.Second)
-	client.Jar = jar
+	// Extension sandbox enforces HTTPS-only domains. Do not apply global
+	// allow_http scheme downgrade here, because some extension APIs (e.g.
+	// spotify-web) will redirect http -> https and can end up in 301 loops.
+	// We still reuse sharedTransport so insecure TLS compatibility mode remains effective.
+	client := &http.Client{
+		Transport: sharedTransport,
+		Timeout:   30 * time.Second,
+		Jar:       jar,
+	}
 	client.CheckRedirect = func(req *http.Request, via []*http.Request) error {
 		if req.URL.Scheme != "https" {
 			GoLog("[Extension:%s] Redirect blocked: non-https scheme '%s'\n", ext.ID, req.URL.Scheme)

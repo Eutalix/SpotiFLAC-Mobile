@@ -45,6 +45,10 @@ class AppStateDatabase {
     return openDatabase(
       path,
       version: _dbVersion,
+      onConfigure: (db) async {
+        await db.rawQuery('PRAGMA journal_mode = WAL');
+        await db.execute('PRAGMA synchronous = NORMAL');
+      },
       onCreate: _createDb,
       onUpgrade: _upgradeDb,
     );

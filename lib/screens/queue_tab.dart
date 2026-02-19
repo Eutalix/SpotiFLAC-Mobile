@@ -2643,16 +2643,11 @@ class _QueueTabState extends ConsumerState<QueueTab> {
     // Apply advanced filters to match what's displayed
     final filtered = _applyAdvancedFilters(unifiedItems);
 
-    // Exclude tracks already in a playlist
-    final playlistTrackKeys = <String>{};
-    for (final playlist in collectionState.playlists) {
-      for (final entry in playlist.tracks) {
-        playlistTrackKeys.add(entry.key);
-      }
-    }
-    if (playlistTrackKeys.isEmpty) return filtered;
+    if (!collectionState.hasPlaylistTracks) return filtered;
     return filtered
-        .where((item) => !playlistTrackKeys.contains(item.collectionKey))
+        .where(
+          (item) => !collectionState.isTrackInAnyPlaylist(item.collectionKey),
+        )
         .toList(growable: false);
   }
 
@@ -2741,17 +2736,13 @@ class _QueueTabState extends ConsumerState<QueueTab> {
     // in the main tracks list.  When a track is removed from a playlist (or
     // the playlist is deleted) it will automatically reappear here because it
     // will no longer be in the set.
-    final playlistTrackKeys = <String>{};
-    for (final playlist in collectionState.playlists) {
-      for (final entry in playlist.tracks) {
-        playlistTrackKeys.add(entry.key);
-      }
-    }
-
-    final filteredUnifiedItems = playlistTrackKeys.isEmpty
+    final filteredUnifiedItems = !collectionState.hasPlaylistTracks
         ? filtered
         : filtered
-              .where((item) => !playlistTrackKeys.contains(item.collectionKey))
+              .where(
+                (item) =>
+                    !collectionState.isTrackInAnyPlaylist(item.collectionKey),
+              )
               .toList(growable: false);
 
     return _FilterContentData(
@@ -3026,6 +3017,23 @@ class _QueueTabState extends ConsumerState<QueueTab> {
                       ? () => _togglePlaylistSelection(playlist.id)
                       : () => _enterPlaylistSelectionMode(playlist.id),
                 ),
+                if (_isPlaylistSelectionMode)
+                  Positioned(
+                    left: 0,
+                    top: 0,
+                    right: 0,
+                    child: AspectRatio(
+                      aspectRatio: 1,
+                      child: Container(
+                        decoration: BoxDecoration(
+                          color: isSelected
+                              ? colorScheme.primary.withValues(alpha: 0.3)
+                              : Colors.transparent,
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                      ),
+                    ),
+                  ),
                 if (_isPlaylistSelectionMode)
                   Positioned(
                     top: 4,

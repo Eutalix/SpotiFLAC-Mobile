@@ -383,6 +383,7 @@ func DownloadTrack(requestJSON string) (string, error) {
 	if err := json.Unmarshal([]byte(requestJSON), &req); err != nil {
 		return errorResponse("Invalid request: " + err.Error())
 	}
+	defer closeOwnedOutputFD(req.OutputFD)
 
 	req.TrackName = strings.TrimSpace(req.TrackName)
 	req.ArtistName = strings.TrimSpace(req.ArtistName)
@@ -565,6 +566,7 @@ func DownloadWithFallback(requestJSON string) (string, error) {
 	if err := json.Unmarshal([]byte(requestJSON), &req); err != nil {
 		return errorResponse("Invalid request: " + err.Error())
 	}
+	defer closeOwnedOutputFD(req.OutputFD)
 
 	req.TrackName = strings.TrimSpace(req.TrackName)
 	req.ArtistName = strings.TrimSpace(req.ArtistName)
@@ -1531,6 +1533,7 @@ func DownloadFromYouTube(requestJSON string) (string, error) {
 	if err := json.Unmarshal([]byte(requestJSON), &req); err != nil {
 		return errorResponse("Invalid request: " + err.Error())
 	}
+	defer closeOwnedOutputFD(req.OutputFD)
 
 	req.TrackName = strings.TrimSpace(req.TrackName)
 	req.ArtistName = strings.TrimSpace(req.ArtistName)
@@ -2248,6 +2251,7 @@ func DownloadWithExtensionsJSON(requestJSON string) (string, error) {
 	if err := json.Unmarshal([]byte(requestJSON), &req); err != nil {
 		return "", fmt.Errorf("invalid request: %w", err)
 	}
+	defer closeOwnedOutputFD(req.OutputFD)
 
 	req.TrackName = strings.TrimSpace(req.TrackName)
 	req.ArtistName = strings.TrimSpace(req.ArtistName)

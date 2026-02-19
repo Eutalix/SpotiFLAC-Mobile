@@ -170,34 +170,71 @@ func newCompatibilityTransport(base http.RoundTripper) http.RoundTripper {
 }
 
 func (t *compatibilityTransport) RoundTrip(req *http.Request) (*http.Response, error) {
-	reqCompat := applyCompatibilityToRequest(req)
-	return t.base.RoundTrip(reqCompat)
-}
-
-func applyCompatibilityToRequest(req *http.Request) *http.Request {
 	if req == nil || req.URL == nil {
-		return req
+		return t.base.RoundTrip(req)
 	}
 
 	opts := GetNetworkCompatibilityOptions()
 	if !opts.AllowHTTP || req.URL.Scheme != "https" {
-		return req
+		return t.base.RoundTrip(req)
 	}
 
+	// Compatibility mode should prefer HTTPS and only fallback to HTTP on
+	// transport-level failures. Forcing HTTP unconditionally can trigger
+	// redirect loops (http -> https) on providers that enforce HTTPS.
+	resp, err := t.base.RoundTrip(req)
+	if err == nil {
+		return resp, nil
+	}
+
+	if !canFallbackToHTTP(req) {
+		return nil, err
+	}
+
+	fallbackReq, cloneErr := cloneRequestWithHTTPScheme(req, "http")
+	if cloneErr != nil {
+		return nil, err
+	}
+
+	GoLog("[HTTP] HTTPS request failed for %s, retrying over HTTP: %v\n", req.URL.Host, err)
+	return t.base.RoundTrip(fallbackReq)
+}
+
+func canFallbackToHTTP(req *http.Request) bool {
+	if req == nil {
+		return false
+	}
+
+	switch strings.ToUpper(req.Method) {
+	case http.MethodGet, http.MethodHead, http.MethodOptions, http.MethodDelete:
+		return true
+	default:
+		return req.GetBody != nil
+	}
+}
+
+func cloneRequestWithHTTPScheme(req *http.Request, scheme string) (*http.Request, error) {
 	reqCopy := req.Clone(req.Context())
+	if req.Body != nil && req.GetBody != nil {
+		bodyCopy, err := req.GetBody()
+		if err != nil {
+			return nil, err
+		}
+		reqCopy.Body = bodyCopy
+	}
+
 	urlCopy := *req.URL
-	urlCopy.Scheme = "http"
+	urlCopy.Scheme = scheme
 	reqCopy.URL = &urlCopy
-	return reqCopy
+	return reqCopy, nil
 }
 
 // Also checks for ISP blocking on errors
 func DoRequestWithUserAgent(client *http.Client, req *http.Request) (*http.Response, error) {
 	req.Header.Set("User-Agent", getRandomUserAgent())
-	reqToSend := applyCompatibilityToRequest(req)
-	resp, err := client.Do(reqToSend)
+	resp, err := client.Do(req)
 	if err != nil {
-		CheckAndLogISPBlocking(err, reqToSend.URL.String(), "HTTP")
+		CheckAndLogISPBlocking(err, req.URL.String(), "HTTP")
 	}
 	return resp, err
 }
@@ -226,7 +263,6 @@ func DoRequestWithRetry(client *http.Client, req *http.Request, config RetryConf
 	for attempt := 0; attempt <= config.MaxRetries; attempt++ {
 		reqCopy := req.Clone(req.Context())
 		reqCopy.Header.Set("User-Agent", getRandomUserAgent())
-		reqCopy = applyCompatibilityToRequest(reqCopy)
 
 		resp, err := client.Do(reqCopy)
 		if err != nil {
