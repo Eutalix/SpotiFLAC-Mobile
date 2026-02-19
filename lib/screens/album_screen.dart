@@ -12,6 +12,8 @@ import 'package:spotiflac_android/services/platform_bridge.dart';
 import 'package:spotiflac_android/utils/file_access.dart';
 import 'package:spotiflac_android/widgets/track_collection_quick_actions.dart';
 import 'package:spotiflac_android/widgets/download_service_picker.dart';
+import 'package:spotiflac_android/providers/library_collections_provider.dart';
+import 'package:spotiflac_android/widgets/playlist_picker_sheet.dart';
 import 'package:spotiflac_android/screens/artist_screen.dart';
 import 'package:spotiflac_android/screens/home_tab.dart'
     show ExtensionArtistScreen;
@@ -450,22 +452,29 @@ class _AlbumScreenState extends ConsumerState<AlbumScreen> {
                             ],
                           ),
                           const SizedBox(height: 16),
-                          Center(
-                            child: FilledButton.icon(
-                              onPressed: () => _downloadAll(context),
-                              icon: const Icon(Icons.download, size: 18),
-                              label: Text(
-                                context.l10n.downloadAllCount(tracks.length),
-                              ),
-                              style: FilledButton.styleFrom(
-                                backgroundColor: Colors.white,
-                                foregroundColor: Colors.black87,
-                                minimumSize: const Size(0, 48),
-                                shape: RoundedRectangleBorder(
-                                  borderRadius: BorderRadius.circular(24),
+                          Row(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              _buildLoveAllButton(),
+                              const SizedBox(width: 12),
+                              FilledButton.icon(
+                                onPressed: () => _downloadAll(context),
+                                icon: const Icon(Icons.download, size: 18),
+                                label: Text(
+                                  context.l10n.downloadAllCount(tracks.length),
+                                ),
+                                style: FilledButton.styleFrom(
+                                  backgroundColor: Colors.white,
+                                  foregroundColor: Colors.black87,
+                                  minimumSize: const Size(0, 48),
+                                  shape: RoundedRectangleBorder(
+                                    borderRadius: BorderRadius.circular(24),
+                                  ),
                                 ),
                               ),
-                            ),
+                              const SizedBox(width: 12),
+                              _buildAddToPlaylistButton(context),
+                            ],
                           ),
                         ],
                       ],
@@ -576,6 +585,98 @@ class _AlbumScreenState extends ConsumerState<AlbumScreen> {
           content: Text(context.l10n.snackbarAddedTracksToQueue(tracks.length)),
         ),
       );
+    }
+  }
+
+  Widget _buildLoveAllButton() {
+    final collectionsState = ref.watch(libraryCollectionsProvider);
+    final tracks = _tracks;
+    final allLoved =
+        tracks != null &&
+        tracks.isNotEmpty &&
+        tracks.every((t) => collectionsState.isLoved(t));
+
+    return Container(
+      width: 48,
+      height: 48,
+      decoration: BoxDecoration(
+        shape: BoxShape.circle,
+        color: Colors.white.withValues(alpha: 0.15),
+        border: Border.all(
+          color: Colors.white.withValues(alpha: 0.3),
+          width: 1,
+        ),
+      ),
+      child: IconButton(
+        onPressed:
+            tracks == null || tracks.isEmpty ? null : () => _loveAll(tracks),
+        icon: Icon(
+          allLoved ? Icons.favorite : Icons.favorite_border,
+          size: 22,
+          color: allLoved ? Colors.redAccent : Colors.white,
+        ),
+        tooltip: allLoved ? 'Remove from Loved' : 'Love All',
+        padding: EdgeInsets.zero,
+      ),
+    );
+  }
+
+  Widget _buildAddToPlaylistButton(BuildContext context) {
+    return Container(
+      width: 48,
+      height: 48,
+      decoration: BoxDecoration(
+        shape: BoxShape.circle,
+        color: Colors.white.withValues(alpha: 0.15),
+        border: Border.all(
+          color: Colors.white.withValues(alpha: 0.3),
+          width: 1,
+        ),
+      ),
+      child: IconButton(
+        onPressed:
+            _tracks == null || _tracks!.isEmpty
+                ? null
+                : () => showAddTracksToPlaylistSheet(context, ref, _tracks!),
+        icon: const Icon(Icons.add, size: 22, color: Colors.white),
+        tooltip: 'Add to Playlist',
+        padding: EdgeInsets.zero,
+      ),
+    );
+  }
+
+  Future<void> _loveAll(List<Track> tracks) async {
+    final notifier = ref.read(libraryCollectionsProvider.notifier);
+    final state = ref.read(libraryCollectionsProvider);
+    final allLoved = tracks.every((t) => state.isLoved(t));
+
+    if (allLoved) {
+      for (final track in tracks) {
+        final key = trackCollectionKey(track);
+        await notifier.removeFromLoved(key);
+      }
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Removed ${tracks.length} tracks from Loved'),
+          ),
+        );
+      }
+    } else {
+      int addedCount = 0;
+      for (final track in tracks) {
+        if (!state.isLoved(track)) {
+          await notifier.toggleLoved(track);
+          addedCount++;
+        }
+      }
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Added $addedCount tracks to Loved'),
+          ),
+        );
+      }
     }
   }
 
