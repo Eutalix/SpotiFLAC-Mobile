@@ -312,25 +312,18 @@ class _LibraryTracksFolderScreenState
                       final isSelected = _selectedKeys.contains(entry.key);
                       return KeyedSubtree(
                         key: ValueKey(entry.key),
-                        child: Column(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            _CollectionTrackTile(
-                              entry: entry,
-                              mode: widget.mode,
-                              playlistId: widget.playlistId,
-                              isSelectionMode: _isSelectionMode,
-                              isSelected: isSelected,
-                              onTap: _isSelectionMode
-                                  ? () => _toggleSelection(entry.key)
-                                  : null,
-                              onLongPress: _isSelectionMode
-                                  ? null
-                                  : () => _enterSelectionMode(entry.key),
-                            ),
-                            if (index < entries.length - 1)
-                              const Divider(height: 1),
-                          ],
+                        child: _CollectionTrackTile(
+                          entry: entry,
+                          mode: widget.mode,
+                          playlistId: widget.playlistId,
+                          isSelectionMode: _isSelectionMode,
+                          isSelected: isSelected,
+                          onTap: _isSelectionMode
+                              ? () => _toggleSelection(entry.key)
+                              : null,
+                          onLongPress: _isSelectionMode
+                              ? null
+                              : () => _enterSelectionMode(entry.key),
                         ),
                       );
                     }, childCount: entries.length),
@@ -879,8 +872,6 @@ class _CollectionTrackTile extends ConsumerWidget {
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(12),
           ),
-          contentPadding:
-              const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
           leading: Row(
             mainAxisSize: MainAxisSize.min,
             children: [
