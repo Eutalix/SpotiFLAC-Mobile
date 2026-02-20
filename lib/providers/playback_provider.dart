@@ -899,6 +899,8 @@ class PlaybackController extends Notifier<PlaybackState> {
     if (!_isPlayRequestCurrent(activeRequestEpoch)) return;
     await FFmpegService.stopLiveDecryptedStream();
     if (!_isPlayRequestCurrent(activeRequestEpoch)) return;
+    await FFmpegService.stopNativeDashManifestPlayback();
+    if (!_isPlayRequestCurrent(activeRequestEpoch)) return;
 
     final streamRequest = _buildStreamRequest(track);
     final selectedService = streamRequest.selectedService;
@@ -966,6 +968,11 @@ class PlaybackController extends Notifier<PlaybackState> {
     var playbackFormat = (result['format'] as String?) ?? '';
     var persistResolvedUrl = true;
     var usesLiveProxy = false;
+    final resolvedBitDepth = (result['bit_depth'] as int?) ?? 0;
+    final resolvedSampleRate = (result['sample_rate'] as int?) ?? 0;
+    final resolvedBitrate = (result['bitrate'] as int?) ?? 0;
+    var preferredDashFallbackFormat = 'm4a';
+    var attemptedNativeDash = false;
 
     if (requiresDecryption) {
       final decryptionKey = (result['decryption_key'] as String?)?.trim() ?? '';
@@ -984,6 +991,7 @@ class PlaybackController extends Notifier<PlaybackState> {
       );
       if (!_isPlayRequestCurrent(activeRequestEpoch)) {
         await FFmpegService.stopLiveDecryptedStream();
+        await FFmpegService.stopNativeDashManifestPlayback();
         return;
       }
       if (decrypted == null) {
@@ -999,26 +1007,62 @@ class PlaybackController extends Notifier<PlaybackState> {
       persistResolvedUrl = false;
       usesLiveProxy = true;
     } else if (requiresProxy || rawStreamUrl.startsWith('MANIFEST:')) {
-      final tunnel = await FFmpegService.startTidalDashLiveStream(
-        manifestPayload: rawStreamUrl,
-        preferredFormat: 'm4a',
-      );
-      if (!_isPlayRequestCurrent(activeRequestEpoch)) {
-        await FFmpegService.stopLiveDecryptedStream();
-        return;
-      }
-      if (tunnel == null) {
-        final message = (result['error'] as String?)?.trim().isNotEmpty == true
-            ? (result['error'] as String).trim()
-            : 'Failed to start Tidal DASH live stream.';
-        _setPlaybackError(message, type: 'resolve_failed');
-        throw Exception(message);
+      final prefersFlacFirst =
+          resolvedBitDepth > 16 || resolvedSampleRate > 48000;
+      preferredDashFallbackFormat = prefersFlacFirst ? 'flac' : 'm4a';
+      if (prefersFlacFirst) {
+        _log.d(
+          'Using FLAC-first Tidal DASH tunnel for hi-res stream '
+          '($resolvedBitDepth-bit/${resolvedSampleRate}Hz).',
+        );
       }
 
-      playbackUrl = tunnel.localUrl;
-      playbackFormat = tunnel.format;
-      persistResolvedUrl = false;
-      usesLiveProxy = true;
+      final nativeDashUrl =
+          await FFmpegService.prepareTidalDashManifestForNativePlayback(
+            manifestPayload: rawStreamUrl,
+          );
+      if (!_isPlayRequestCurrent(activeRequestEpoch)) {
+        await FFmpegService.stopLiveDecryptedStream();
+        await FFmpegService.stopNativeDashManifestPlayback();
+        return;
+      }
+
+      if (nativeDashUrl != null) {
+        attemptedNativeDash = true;
+        playbackUrl = nativeDashUrl;
+        if (playbackFormat.trim().isEmpty) {
+          playbackFormat = 'dash';
+        }
+        persistResolvedUrl = false;
+        usesLiveProxy = false;
+        _log.d('Using native Tidal DASH source: $nativeDashUrl');
+      } else {
+        _log.w(
+          'Failed to prepare native Tidal DASH source, falling back to FFmpeg tunnel.',
+        );
+        final tunnel = await FFmpegService.startTidalDashLiveStream(
+          manifestPayload: rawStreamUrl,
+          preferredFormat: preferredDashFallbackFormat,
+        );
+        if (!_isPlayRequestCurrent(activeRequestEpoch)) {
+          await FFmpegService.stopLiveDecryptedStream();
+          await FFmpegService.stopNativeDashManifestPlayback();
+          return;
+        }
+        if (tunnel == null) {
+          final message =
+              (result['error'] as String?)?.trim().isNotEmpty == true
+              ? (result['error'] as String).trim()
+              : 'Failed to start Tidal DASH live stream.';
+          _setPlaybackError(message, type: 'resolve_failed');
+          throw Exception(message);
+        }
+
+        playbackUrl = tunnel.localUrl;
+        playbackFormat = tunnel.format;
+        persistResolvedUrl = false;
+        usesLiveProxy = true;
+      }
     }
 
     final item = PlaybackItem(
@@ -1032,9 +1076,9 @@ class PlaybackController extends Notifier<PlaybackState> {
       service: (result['service'] as String?) ?? selectedService,
       durationMs: track.duration,
       format: playbackFormat,
-      bitDepth: (result['bit_depth'] as int?) ?? 0,
-      sampleRate: (result['sample_rate'] as int?) ?? 0,
-      bitrate: (result['bitrate'] as int?) ?? 0,
+      bitDepth: resolvedBitDepth,
+      sampleRate: resolvedSampleRate,
+      bitrate: resolvedBitrate,
       track: track,
     );
 
@@ -1048,12 +1092,62 @@ class PlaybackController extends Notifier<PlaybackState> {
             initialPosition > Duration.zero)
         ? initialPosition
         : null;
-    await _setSourceAndPlay(
-      Uri.parse(playbackUrl),
-      item,
-      initialPosition: effectiveInitialPosition,
-      expectedRequestEpoch: activeRequestEpoch,
-    );
+
+    try {
+      await _setSourceAndPlay(
+        Uri.parse(playbackUrl),
+        item,
+        initialPosition: effectiveInitialPosition,
+        expectedRequestEpoch: activeRequestEpoch,
+      );
+      return;
+    } catch (e) {
+      final shouldFallbackToTunnel =
+          attemptedNativeDash &&
+          (requiresProxy || rawStreamUrl.startsWith('MANIFEST:')) &&
+          _isPlayRequestCurrent(activeRequestEpoch);
+      if (!shouldFallbackToTunnel) {
+        rethrow;
+      }
+
+      _log.w(
+        'Native Tidal DASH playback failed, retrying via FFmpeg tunnel: $e',
+      );
+      await FFmpegService.stopNativeDashManifestPlayback();
+
+      final tunnel = await FFmpegService.startTidalDashLiveStream(
+        manifestPayload: rawStreamUrl,
+        preferredFormat: preferredDashFallbackFormat,
+      );
+      if (!_isPlayRequestCurrent(activeRequestEpoch)) {
+        await FFmpegService.stopLiveDecryptedStream();
+        await FFmpegService.stopNativeDashManifestPlayback();
+        return;
+      }
+      if (tunnel == null) {
+        final message =
+            'Native DASH playback failed and FFmpeg tunnel fallback did not start.';
+        _setPlaybackError(message, type: 'resolve_failed');
+        throw Exception(message);
+      }
+
+      playbackUrl = tunnel.localUrl;
+      playbackFormat = tunnel.format;
+
+      final fallbackItem = item.copyWith(
+        sourceUri: '',
+        format: playbackFormat,
+        bitDepth: resolvedBitDepth,
+        sampleRate: resolvedSampleRate,
+        bitrate: resolvedBitrate,
+      );
+      state = state.copyWith(seekSupported: false);
+      await _setSourceAndPlay(
+        Uri.parse(playbackUrl),
+        fallbackItem,
+        expectedRequestEpoch: activeRequestEpoch,
+      );
+    }
   }
 
   // ─── Public: play local file ─────────────────────────────────────────────
@@ -1291,6 +1385,7 @@ class PlaybackController extends Notifier<PlaybackState> {
     final lastKnownPosition = state.position;
     final lastKnownDuration = state.duration;
     await FFmpegService.stopLiveDecryptedStream();
+    await FFmpegService.stopNativeDashManifestPlayback();
     await _player.stop();
     _prefetchingQueueIndex = null;
     _lastPrefetchAttemptIndex = null;
@@ -1462,8 +1557,12 @@ class PlaybackController extends Notifier<PlaybackState> {
         !_isPlayRequestCurrent(expectedRequestEpoch)) {
       return;
     }
-    if (!FFmpegService.isActiveLiveDecryptedUrl(uri.toString())) {
+    final sourceUrl = uri.toString();
+    if (!FFmpegService.isActiveLiveDecryptedUrl(sourceUrl)) {
       await FFmpegService.stopLiveDecryptedStream();
+    }
+    if (!FFmpegService.isActiveNativeDashManifestUrl(sourceUrl)) {
+      await FFmpegService.stopNativeDashManifestPlayback();
     }
 
     final startPosition =
@@ -1517,8 +1616,11 @@ class PlaybackController extends Notifier<PlaybackState> {
           !_isPlayRequestCurrent(expectedRequestEpoch)) {
         return;
       }
-      if (FFmpegService.isActiveLiveDecryptedUrl(uri.toString())) {
+      if (FFmpegService.isActiveLiveDecryptedUrl(sourceUrl)) {
         await FFmpegService.stopLiveDecryptedStream();
+      }
+      if (FFmpegService.isActiveNativeDashManifestUrl(sourceUrl)) {
+        await FFmpegService.stopNativeDashManifestPlayback();
       }
       _log.e('Failed to play source: $e');
       _setPlaybackError(e.toString(), type: 'playback_failed');
@@ -1972,6 +2074,7 @@ class PlaybackController extends Notifier<PlaybackState> {
     _snapshotSaveTimer?.cancel();
     unawaited(_savePlaybackSnapshot());
     unawaited(FFmpegService.stopLiveDecryptedStream());
+    unawaited(FFmpegService.stopNativeDashManifestPlayback());
     for (final sub in _subscriptions) {
       sub.cancel();
     }
