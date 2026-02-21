@@ -3228,4 +3228,52 @@ class AppLocalizationsId extends AppLocalizations {
   String selectionBatchConvertSuccess(int success, int total, String format) {
     return 'Converted $success of $total tracks to $format';
   }
+
+  @override
+  String get setupModeSelectionTitle => 'Pilih Mode Anda';
+
+  @override
+  String get setupModeSelectionDescription =>
+      'Bagaimana Anda ingin menggunakan SpotiFLAC? Anda dapat mengubahnya nanti di Pengaturan.';
+
+  @override
+  String get setupModeDownloaderTitle => 'Pengunduh';
+
+  @override
+  String get setupModeDownloaderFeature1 =>
+      'Unduh trek dalam kualitas FLAC lossless';
+
+  @override
+  String get setupModeDownloaderFeature2 =>
+      'Simpan musik ke perangkat Anda untuk mendengarkan offline';
+
+  @override
+  String get setupModeDownloaderFeature3 =>
+      'Kelola perpustakaan musik lokal Anda';
+
+  @override
+  String get setupModeStreamingTitle => 'Streaming';
+
+  @override
+  String get setupModeStreamingFeature1 =>
+      'Streaming trek secara instan tanpa mengunduh';
+
+  @override
+  String get setupModeStreamingFeature2 =>
+      'Smart Queue secara otomatis menemukan musik baru untuk Anda';
+
+  @override
+  String get setupModeStreamingFeature3 =>
+      'Putar trek apa pun sesuai permintaan dengan kontrol pemutaran';
+
+  @override
+  String get setupModeChangeableLater =>
+      'Anda dapat beralih antar mode kapan saja di Pengaturan.';
+
+  @override
+  String get settingsSmartQueueTitle => 'Smart Queue';
+
+  @override
+  String get settingsSmartQueueSubtitle =>
+      'Secara otomatis temukan dan tambahkan trek serupa ke antrean Anda';
 }

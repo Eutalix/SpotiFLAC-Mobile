@@ -2466,5 +2466,33 @@
       "total": {"type": "int"},
       "format": {"type": "String"}
     }
-  }
+  },
+
+  "setupModeSelectionTitle": "Choose Your Mode",
+  "@setupModeSelectionTitle": {"description": "Title for mode selection step in setup wizard"},
+  "setupModeSelectionDescription": "How would you like to use SpotiFLAC? You can always change this later in Settings.",
+  "@setupModeSelectionDescription": {"description": "Description for mode selection step"},
+  "setupModeDownloaderTitle": "Downloader",
+  "@setupModeDownloaderTitle": {"description": "Title for downloader mode option"},
+  "setupModeDownloaderFeature1": "Download tracks in lossless FLAC quality",
+  "@setupModeDownloaderFeature1": {"description": "Downloader mode feature 1"},
+  "setupModeDownloaderFeature2": "Save music to your device for offline listening",
+  "@setupModeDownloaderFeature2": {"description": "Downloader mode feature 2"},
+  "setupModeDownloaderFeature3": "Manage your local music library",
+  "@setupModeDownloaderFeature3": {"description": "Downloader mode feature 3"},
+  "setupModeStreamingTitle": "Streaming",
+  "@setupModeStreamingTitle": {"description": "Title for streaming mode option"},
+  "setupModeStreamingFeature1": "Stream tracks instantly without downloading",
+  "@setupModeStreamingFeature1": {"description": "Streaming mode feature 1"},
+  "setupModeStreamingFeature2": "Smart Queue auto-discovers new music for you",
+  "@setupModeStreamingFeature2": {"description": "Streaming mode feature 2"},
+  "setupModeStreamingFeature3": "Play any track on demand with playback controls",
+  "@setupModeStreamingFeature3": {"description": "Streaming mode feature 3"},
+  "setupModeChangeableLater": "You can switch between modes anytime in Settings.",
+  "@setupModeChangeableLater": {"description": "Hint that mode can be changed later"},
+
+  "settingsSmartQueueTitle": "Smart Queue",
+  "@settingsSmartQueueTitle": {"description": "Title for Smart Queue toggle in settings"},
+  "settingsSmartQueueSubtitle": "Automatically discover and add similar tracks to your queue",
+  "@settingsSmartQueueSubtitle": {"description": "Subtitle for Smart Queue toggle in settings"}
 }

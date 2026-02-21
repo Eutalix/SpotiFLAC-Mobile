@@ -3215,6 +3215,45 @@ class AppLocalizationsZh extends AppLocalizations {
   String selectionBatchConvertSuccess(int success, int total, String format) {
     return 'Converted $success of $total tracks to $format';
   }
+
+  @override
+  String get setupModeSelectionTitle => '选择您的模式';
+
+  @override
+  String get setupModeSelectionDescription => '您想如何使用 SpotiFLAC？您可以稍后在设置中随时更改。';
+
+  @override
+  String get setupModeDownloaderTitle => '下载器';
+
+  @override
+  String get setupModeDownloaderFeature1 => '以无损 FLAC 品质下载曲目';
+
+  @override
+  String get setupModeDownloaderFeature2 => '将音乐保存到设备以供离线收听';
+
+  @override
+  String get setupModeDownloaderFeature3 => '管理您的本地音乐库';
+
+  @override
+  String get setupModeStreamingTitle => '流媒体';
+
+  @override
+  String get setupModeStreamingFeature1 => '无需下载即可即时播放曲目';
+
+  @override
+  String get setupModeStreamingFeature2 => 'Smart Queue 自动为您发现新音乐';
+
+  @override
+  String get setupModeStreamingFeature3 => '通过播放控件随时点播任意曲目';
+
+  @override
+  String get setupModeChangeableLater => '您可以随时在设置中切换模式。';
+
+  @override
+  String get settingsSmartQueueTitle => 'Smart Queue';
+
+  @override
+  String get settingsSmartQueueSubtitle => '自动发现并将相似曲目添加到您的队列中';
 }
 
 /// The translations for Chinese, as used in China (`zh_CN`).
@@ -6148,6 +6187,45 @@ class AppLocalizationsZhCn extends AppLocalizationsZh {
 
   @override
   String get trackConvertFailed => 'Conversion failed';
+
+  @override
+  String get setupModeSelectionTitle => '选择您的模式';
+
+  @override
+  String get setupModeSelectionDescription => '您想如何使用 SpotiFLAC？您可以稍后在设置中随时更改。';
+
+  @override
+  String get setupModeDownloaderTitle => '下载器';
+
+  @override
+  String get setupModeDownloaderFeature1 => '以无损 FLAC 品质下载曲目';
+
+  @override
+  String get setupModeDownloaderFeature2 => '将音乐保存到设备以供离线收听';
+
+  @override
+  String get setupModeDownloaderFeature3 => '管理您的本地音乐库';
+
+  @override
+  String get setupModeStreamingTitle => '流媒体';
+
+  @override
+  String get setupModeStreamingFeature1 => '无需下载即可即时播放曲目';
+
+  @override
+  String get setupModeStreamingFeature2 => 'Smart Queue 自动为您发现新音乐';
+
+  @override
+  String get setupModeStreamingFeature3 => '通过播放控件随时点播任意曲目';
+
+  @override
+  String get setupModeChangeableLater => '您可以随时在设置中切换模式。';
+
+  @override
+  String get settingsSmartQueueTitle => 'Smart Queue';
+
+  @override
+  String get settingsSmartQueueSubtitle => '自动发现并将相似曲目添加到您的队列中';
 }
 
 /// The translations for Chinese, as used in Taiwan (`zh_TW`).
@@ -9081,4 +9159,43 @@ class AppLocalizationsZhTw extends AppLocalizationsZh {
 
   @override
   String get trackConvertFailed => 'Conversion failed';
+
+  @override
+  String get setupModeSelectionTitle => '選擇您的模式';
+
+  @override
+  String get setupModeSelectionDescription => '您想如何使用 SpotiFLAC？您可以稍後在設定中隨時變更。';
+
+  @override
+  String get setupModeDownloaderTitle => '下載器';
+
+  @override
+  String get setupModeDownloaderFeature1 => '以無損 FLAC 品質下載曲目';
+
+  @override
+  String get setupModeDownloaderFeature2 => '將音樂儲存到裝置以供離線收聽';
+
+  @override
+  String get setupModeDownloaderFeature3 => '管理您的本機音樂庫';
+
+  @override
+  String get setupModeStreamingTitle => '串流';
+
+  @override
+  String get setupModeStreamingFeature1 => '無需下載即可即時串流曲目';
+
+  @override
+  String get setupModeStreamingFeature2 => 'Smart Queue 自動為您探索新音樂';
+
+  @override
+  String get setupModeStreamingFeature3 => '透過播放控制項隨時點播任意曲目';
+
+  @override
+  String get setupModeChangeableLater => '您可以隨時在設定中切換模式。';
+
+  @override
+  String get settingsSmartQueueTitle => 'Smart Queue';
+
+  @override
+  String get settingsSmartQueueSubtitle => '自動探索並將相似曲目新增到您的佇列中';
 }

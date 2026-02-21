@@ -4177,5 +4177,18 @@
   "collectionPlaylistChangeCover": "Ubah gambar sampul",
   "@collectionPlaylistChangeCover": {"description": "Bottom sheet action to pick a custom cover image for a playlist"},
   "collectionPlaylistRemoveCover": "Hapus gambar sampul",
-  "@collectionPlaylistRemoveCover": {"description": "Bottom sheet action to remove custom cover image from a playlist"}
+  "@collectionPlaylistRemoveCover": {"description": "Bottom sheet action to remove custom cover image from a playlist"},
+  "setupModeSelectionTitle": "Pilih Mode Anda",
+  "setupModeSelectionDescription": "Bagaimana Anda ingin menggunakan SpotiFLAC? Anda dapat mengubahnya nanti di Pengaturan.",
+  "setupModeDownloaderTitle": "Pengunduh",
+  "setupModeDownloaderFeature1": "Unduh trek dalam kualitas FLAC lossless",
+  "setupModeDownloaderFeature2": "Simpan musik ke perangkat Anda untuk mendengarkan offline",
+  "setupModeDownloaderFeature3": "Kelola perpustakaan musik lokal Anda",
+  "setupModeStreamingTitle": "Streaming",
+  "setupModeStreamingFeature1": "Streaming trek secara instan tanpa mengunduh",
+  "setupModeStreamingFeature2": "Smart Queue secara otomatis menemukan musik baru untuk Anda",
+  "setupModeStreamingFeature3": "Putar trek apa pun sesuai permintaan dengan kontrol pemutaran",
+  "setupModeChangeableLater": "Anda dapat beralih antar mode kapan saja di Pengaturan.",
+  "settingsSmartQueueTitle": "Smart Queue",
+  "settingsSmartQueueSubtitle": "Secara otomatis temukan dan tambahkan trek serupa ke antrean Anda"
 }

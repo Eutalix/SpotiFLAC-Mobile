@@ -5615,6 +5615,84 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Converted {success} of {total} tracks to {format}'**
   String selectionBatchConvertSuccess(int success, int total, String format);
+
+  /// Title for mode selection step in setup wizard
+  ///
+  /// In en, this message translates to:
+  /// **'Choose Your Mode'**
+  String get setupModeSelectionTitle;
+
+  /// Description for mode selection step
+  ///
+  /// In en, this message translates to:
+  /// **'How would you like to use SpotiFLAC? You can always change this later in Settings.'**
+  String get setupModeSelectionDescription;
+
+  /// Title for downloader mode option
+  ///
+  /// In en, this message translates to:
+  /// **'Downloader'**
+  String get setupModeDownloaderTitle;
+
+  /// Downloader mode feature 1
+  ///
+  /// In en, this message translates to:
+  /// **'Download tracks in lossless FLAC quality'**
+  String get setupModeDownloaderFeature1;
+
+  /// Downloader mode feature 2
+  ///
+  /// In en, this message translates to:
+  /// **'Save music to your device for offline listening'**
+  String get setupModeDownloaderFeature2;
+
+  /// Downloader mode feature 3
+  ///
+  /// In en, this message translates to:
+  /// **'Manage your local music library'**
+  String get setupModeDownloaderFeature3;
+
+  /// Title for streaming mode option
+  ///
+  /// In en, this message translates to:
+  /// **'Streaming'**
+  String get setupModeStreamingTitle;
+
+  /// Streaming mode feature 1
+  ///
+  /// In en, this message translates to:
+  /// **'Stream tracks instantly without downloading'**
+  String get setupModeStreamingFeature1;
+
+  /// Streaming mode feature 2
+  ///
+  /// In en, this message translates to:
+  /// **'Smart Queue auto-discovers new music for you'**
+  String get setupModeStreamingFeature2;
+
+  /// Streaming mode feature 3
+  ///
+  /// In en, this message translates to:
+  /// **'Play any track on demand with playback controls'**
+  String get setupModeStreamingFeature3;
+
+  /// Hint that mode can be changed later
+  ///
+  /// In en, this message translates to:
+  /// **'You can switch between modes anytime in Settings.'**
+  String get setupModeChangeableLater;
+
+  /// Title for Smart Queue toggle in settings
+  ///
+  /// In en, this message translates to:
+  /// **'Smart Queue'**
+  String get settingsSmartQueueTitle;
+
+  /// Subtitle for Smart Queue toggle in settings
+  ///
+  /// In en, this message translates to:
+  /// **'Automatically discover and add similar tracks to your queue'**
+  String get settingsSmartQueueSubtitle;
 }
 
 class _AppLocalizationsDelegate

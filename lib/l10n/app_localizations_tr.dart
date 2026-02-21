@@ -3230,4 +3230,51 @@ class AppLocalizationsTr extends AppLocalizations {
   String selectionBatchConvertSuccess(int success, int total, String format) {
     return 'Converted $success of $total tracks to $format';
   }
+
+  @override
+  String get setupModeSelectionTitle => 'Modunuzu Seçin';
+
+  @override
+  String get setupModeSelectionDescription =>
+      'SpotiFLAC\'ı nasıl kullanmak istersiniz? Bunu daha sonra Ayarlar\'dan değiştirebilirsiniz.';
+
+  @override
+  String get setupModeDownloaderTitle => 'İndirici';
+
+  @override
+  String get setupModeDownloaderFeature1 =>
+      'Kayıpsız FLAC kalitesinde parça indirin';
+
+  @override
+  String get setupModeDownloaderFeature2 =>
+      'Çevrimdışı dinlemek için müziği cihazınıza kaydedin';
+
+  @override
+  String get setupModeDownloaderFeature3 => 'Yerel müzik kütüphanenizi yönetin';
+
+  @override
+  String get setupModeStreamingTitle => 'Yayın Akışı';
+
+  @override
+  String get setupModeStreamingFeature1 =>
+      'İndirmeden parçaları anında yayınlayın';
+
+  @override
+  String get setupModeStreamingFeature2 =>
+      'Smart Queue sizin için otomatik olarak yeni müzik keşfeder';
+
+  @override
+  String get setupModeStreamingFeature3 =>
+      'İstediğiniz parçayı oynatma kontrolleriyle çalın';
+
+  @override
+  String get setupModeChangeableLater =>
+      'Ayarlar\'dan istediğiniz zaman modlar arasında geçiş yapabilirsiniz.';
+
+  @override
+  String get settingsSmartQueueTitle => 'Smart Queue';
+
+  @override
+  String get settingsSmartQueueSubtitle =>
+      'Sıranıza otomatik olarak benzer parçalar keşfedin ve ekleyin';
 }

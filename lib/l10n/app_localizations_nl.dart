@@ -3215,4 +3215,52 @@ class AppLocalizationsNl extends AppLocalizations {
   String selectionBatchConvertSuccess(int success, int total, String format) {
     return 'Converted $success of $total tracks to $format';
   }
+
+  @override
+  String get setupModeSelectionTitle => 'Kies je modus';
+
+  @override
+  String get setupModeSelectionDescription =>
+      'Hoe wil je SpotiFLAC gebruiken? Je kunt dit later altijd wijzigen in Instellingen.';
+
+  @override
+  String get setupModeDownloaderTitle => 'Downloader';
+
+  @override
+  String get setupModeDownloaderFeature1 =>
+      'Download nummers in lossless FLAC-kwaliteit';
+
+  @override
+  String get setupModeDownloaderFeature2 =>
+      'Sla muziek op je apparaat op om offline te luisteren';
+
+  @override
+  String get setupModeDownloaderFeature3 =>
+      'Beheer je lokale muziekbibliotheek';
+
+  @override
+  String get setupModeStreamingTitle => 'Streaming';
+
+  @override
+  String get setupModeStreamingFeature1 =>
+      'Stream nummers direct zonder te downloaden';
+
+  @override
+  String get setupModeStreamingFeature2 =>
+      'Smart Queue ontdekt automatisch nieuwe muziek voor je';
+
+  @override
+  String get setupModeStreamingFeature3 =>
+      'Speel elk nummer op aanvraag af met afspeelbediening';
+
+  @override
+  String get setupModeChangeableLater =>
+      'Je kunt op elk moment wisselen tussen modi in Instellingen.';
+
+  @override
+  String get settingsSmartQueueTitle => 'Smart Queue';
+
+  @override
+  String get settingsSmartQueueSubtitle =>
+      'Ontdek automatisch vergelijkbare nummers en voeg ze toe aan je wachtrij';
 }

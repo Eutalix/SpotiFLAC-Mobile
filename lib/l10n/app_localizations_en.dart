@@ -3215,4 +3215,51 @@ class AppLocalizationsEn extends AppLocalizations {
   String selectionBatchConvertSuccess(int success, int total, String format) {
     return 'Converted $success of $total tracks to $format';
   }
+
+  @override
+  String get setupModeSelectionTitle => 'Choose Your Mode';
+
+  @override
+  String get setupModeSelectionDescription =>
+      'How would you like to use SpotiFLAC? You can always change this later in Settings.';
+
+  @override
+  String get setupModeDownloaderTitle => 'Downloader';
+
+  @override
+  String get setupModeDownloaderFeature1 =>
+      'Download tracks in lossless FLAC quality';
+
+  @override
+  String get setupModeDownloaderFeature2 =>
+      'Save music to your device for offline listening';
+
+  @override
+  String get setupModeDownloaderFeature3 => 'Manage your local music library';
+
+  @override
+  String get setupModeStreamingTitle => 'Streaming';
+
+  @override
+  String get setupModeStreamingFeature1 =>
+      'Stream tracks instantly without downloading';
+
+  @override
+  String get setupModeStreamingFeature2 =>
+      'Smart Queue auto-discovers new music for you';
+
+  @override
+  String get setupModeStreamingFeature3 =>
+      'Play any track on demand with playback controls';
+
+  @override
+  String get setupModeChangeableLater =>
+      'You can switch between modes anytime in Settings.';
+
+  @override
+  String get settingsSmartQueueTitle => 'Smart Queue';
+
+  @override
+  String get settingsSmartQueueSubtitle =>
+      'Automatically discover and add similar tracks to your queue';
 }

@@ -30,11 +30,8 @@ class _SetupScreenState extends ConsumerState<SetupScreen> {
   bool _isLoading = false;
   int _androidSdkVersion = 0;
 
-  // Spotify form
-  final _clientIdController = TextEditingController();
-  final _clientSecretController = TextEditingController();
-  bool _useSpotifyApi = false;
-  bool _showClientSecret = false;
+  // Mode selection
+  String _selectedMode = 'downloader'; // 'downloader' or 'streaming'
 
   // We add 1 for the Welcome step
   int get _totalSteps => (_androidSdkVersion >= 33 ? 4 : 3) + 1;
@@ -48,8 +45,6 @@ class _SetupScreenState extends ConsumerState<SetupScreen> {
   @override
   void dispose() {
     _pageController.dispose();
-    _clientIdController.dispose();
-    _clientSecretController.dispose();
     super.dispose();
   }
 
@@ -408,20 +403,8 @@ class _SetupScreenState extends ConsumerState<SetupScreen> {
             );
       }
 
-      if (_useSpotifyApi &&
-          _clientIdController.text.trim().isNotEmpty &&
-          _clientSecretController.text.trim().isNotEmpty) {
-        ref
-            .read(settingsProvider.notifier)
-            .setSpotifyCredentials(
-              _clientIdController.text.trim(),
-              _clientSecretController.text.trim(),
-            );
-        ref.read(settingsProvider.notifier).setMetadataSource('spotify');
-      } else {
-        ref.read(settingsProvider.notifier).setMetadataSource('deezer');
-      }
-
+      ref.read(settingsProvider.notifier).setInteractionMode(_selectedMode);
+      ref.read(settingsProvider.notifier).setMetadataSource('deezer');
       ref.read(settingsProvider.notifier).setFirstLaunchComplete();
 
       if (mounted) context.go('/tutorial');
@@ -481,7 +464,7 @@ class _SetupScreenState extends ConsumerState<SetupScreen> {
         case 2:
           return _selectedDirectory != null;
         case 3:
-          return false; // Spotify is last/submit
+          return true; // Mode selection always has a default
       }
     } else {
       switch (logicStep) {
@@ -490,7 +473,7 @@ class _SetupScreenState extends ConsumerState<SetupScreen> {
         case 1:
           return _selectedDirectory != null;
         case 2:
-          return false; // Spotify
+          return true; // Mode selection always has a default
       }
     }
     return false;
@@ -567,7 +550,7 @@ class _SetupScreenState extends ConsumerState<SetupScreen> {
                   if (_androidSdkVersion >= 33)
                     _buildNotificationStep(colorScheme),
                   _buildDirectoryStep(colorScheme),
-                  _buildSpotifyStep(colorScheme),
+                  _buildModeSelectionStep(colorScheme),
                 ],
               ),
             ),
@@ -587,12 +570,7 @@ class _SetupScreenState extends ConsumerState<SetupScreen> {
               icon: const SizedBox.shrink(), // Custom layout
             )
           : FloatingActionButton.extended(
-              onPressed:
-                  (!_useSpotifyApi ||
-                      (_clientIdController.text.isNotEmpty &&
-                          _clientSecretController.text.isNotEmpty))
-                  ? _completeSetup
-                  : null,
+              onPressed: _isLoading ? null : _completeSetup,
               label: _isLoading
                   ? SizedBox(
                       width: 20,
@@ -767,106 +745,45 @@ class _SetupScreenState extends ConsumerState<SetupScreen> {
     );
   }
 
-  Widget _buildSpotifyStep(ColorScheme colorScheme) {
-    return SingleChildScrollView(
-      padding: const EdgeInsets.all(24),
+  Widget _buildModeSelectionStep(ColorScheme colorScheme) {
+    return _StepLayout(
+      title: context.l10n.setupModeSelectionTitle,
+      description: context.l10n.setupModeSelectionDescription,
+      icon: Icons.tune,
       child: Column(
         children: [
-          Icon(Icons.api, size: 48, color: colorScheme.primary),
-          const SizedBox(height: 24),
-          Text(
-            context.l10n.setupSpotifyApiOptional,
-            style: Theme.of(
-              context,
-            ).textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.bold),
-            textAlign: TextAlign.center,
+          _ModeCard(
+            icon: Icons.download,
+            title: context.l10n.setupModeDownloaderTitle,
+            features: [
+              context.l10n.setupModeDownloaderFeature1,
+              context.l10n.setupModeDownloaderFeature2,
+              context.l10n.setupModeDownloaderFeature3,
+            ],
+            isSelected: _selectedMode == 'downloader',
+            onTap: () => setState(() => _selectedMode = 'downloader'),
+            colorScheme: colorScheme,
           ),
-          const SizedBox(height: 8),
+          const SizedBox(height: 12),
+          _ModeCard(
+            icon: Icons.headphones,
+            title: context.l10n.setupModeStreamingTitle,
+            features: [
+              context.l10n.setupModeStreamingFeature1,
+              context.l10n.setupModeStreamingFeature2,
+              context.l10n.setupModeStreamingFeature3,
+            ],
+            isSelected: _selectedMode == 'streaming',
+            onTap: () => setState(() => _selectedMode = 'streaming'),
+            colorScheme: colorScheme,
+          ),
+          const SizedBox(height: 16),
           Text(
-            context.l10n.setupSpotifyApiDescription,
-            textAlign: TextAlign.center,
-            style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+            context.l10n.setupModeChangeableLater,
+            style: Theme.of(context).textTheme.bodySmall?.copyWith(
               color: colorScheme.onSurfaceVariant,
             ),
-          ),
-          const SizedBox(height: 32),
-
-          Card(
-            elevation: 0,
-            color: colorScheme.surfaceContainerHighest,
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(16),
-            ),
-            child: Column(
-              children: [
-                SwitchListTile(
-                  value: _useSpotifyApi,
-                  onChanged: (v) => setState(() => _useSpotifyApi = v),
-                  title: Text(context.l10n.setupUseSpotifyApi),
-                  subtitle: Text(
-                    _useSpotifyApi
-                        ? context.l10n.setupEnterCredentialsBelow
-                        : "Using bundled metadata",
-                  ),
-                ),
-                if (_useSpotifyApi) ...[
-                  const Divider(),
-                  Padding(
-                    padding: const EdgeInsets.all(16),
-                    child: Column(
-                      children: [
-                        TextField(
-                          controller: _clientIdController,
-                          decoration: InputDecoration(
-                            labelText: context.l10n.credentialsClientId,
-                            prefixIcon: const Icon(Icons.key),
-                            border: OutlineInputBorder(
-                              borderRadius: BorderRadius.circular(12),
-                            ),
-                            enabledBorder: OutlineInputBorder(
-                              borderRadius: BorderRadius.circular(12),
-                              borderSide: BorderSide(
-                                color: colorScheme.outline,
-                                width: 0.5,
-                              ),
-                            ),
-                          ),
-                        ),
-                        const SizedBox(height: 16),
-                        TextField(
-                          controller: _clientSecretController,
-                          obscureText: !_showClientSecret,
-                          decoration: InputDecoration(
-                            labelText: context.l10n.credentialsClientSecret,
-                            prefixIcon: const Icon(Icons.lock),
-                            border: OutlineInputBorder(
-                              borderRadius: BorderRadius.circular(12),
-                            ),
-                            enabledBorder: OutlineInputBorder(
-                              borderRadius: BorderRadius.circular(12),
-                              borderSide: BorderSide(
-                                color: colorScheme.outline,
-                                width: 0.5,
-                              ),
-                            ),
-                            suffixIcon: IconButton(
-                              icon: Icon(
-                                _showClientSecret
-                                    ? Icons.visibility_off
-                                    : Icons.visibility,
-                              ),
-                              onPressed: () => setState(
-                                () => _showClientSecret = !_showClientSecret,
-                              ),
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ],
-              ],
-            ),
+            textAlign: TextAlign.center,
           ),
         ],
       ),
@@ -977,6 +894,133 @@ class _SuccessCard extends StatelessWidget {
             ),
           ),
         ],
+      ),
+    );
+  }
+}
+
+class _ModeCard extends StatelessWidget {
+  final IconData icon;
+  final String title;
+  final List<String> features;
+  final bool isSelected;
+  final VoidCallback onTap;
+  final ColorScheme colorScheme;
+
+  const _ModeCard({
+    required this.icon,
+    required this.title,
+    required this.features,
+    required this.isSelected,
+    required this.onTap,
+    required this.colorScheme,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: onTap,
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 200),
+        curve: Curves.easeInOut,
+        width: double.infinity,
+        padding: const EdgeInsets.all(16),
+        decoration: BoxDecoration(
+          color: isSelected
+              ? colorScheme.primaryContainer
+              : colorScheme.surfaceContainerHighest,
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(
+            color: isSelected
+                ? colorScheme.primary
+                : colorScheme.outlineVariant,
+            width: isSelected ? 2 : 1,
+          ),
+        ),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Padding(
+              padding: const EdgeInsets.only(top: 2),
+              child: Icon(
+                isSelected
+                    ? Icons.radio_button_checked
+                    : Icons.radio_button_unchecked,
+                size: 22,
+                color: isSelected
+                    ? colorScheme.primary
+                    : colorScheme.onSurfaceVariant,
+              ),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      Icon(
+                        icon,
+                        size: 22,
+                        color: isSelected
+                            ? colorScheme.onPrimaryContainer
+                            : colorScheme.onSurfaceVariant,
+                      ),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Text(
+                          title,
+                          style: Theme.of(context)
+                              .textTheme
+                              .titleMedium
+                              ?.copyWith(
+                                fontWeight: FontWeight.bold,
+                                color: isSelected
+                                    ? colorScheme.onPrimaryContainer
+                                    : colorScheme.onSurface,
+                              ),
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 8),
+                  ...features.map(
+                    (feature) => Padding(
+                      padding: const EdgeInsets.only(bottom: 4),
+                      child: Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            '\u2022 ',
+                            style: TextStyle(
+                              color: isSelected
+                                  ? colorScheme.onPrimaryContainer
+                                  : colorScheme.onSurfaceVariant,
+                            ),
+                          ),
+                          Expanded(
+                            child: Text(
+                              feature,
+                              style: Theme.of(context)
+                                  .textTheme
+                                  .bodySmall
+                                  ?.copyWith(
+                                    color: isSelected
+                                        ? colorScheme.onPrimaryContainer
+                                        : colorScheme.onSurfaceVariant,
+                                    height: 1.4,
+                                  ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }

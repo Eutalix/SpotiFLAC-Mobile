@@ -3214,4 +3214,44 @@ class AppLocalizationsKo extends AppLocalizations {
   String selectionBatchConvertSuccess(int success, int total, String format) {
     return 'Converted $success of $total tracks to $format';
   }
+
+  @override
+  String get setupModeSelectionTitle => '모드 선택';
+
+  @override
+  String get setupModeSelectionDescription =>
+      'SpotiFLAC을 어떻게 사용하시겠습니까? 나중에 설정에서 언제든지 변경할 수 있습니다.';
+
+  @override
+  String get setupModeDownloaderTitle => '다운로더';
+
+  @override
+  String get setupModeDownloaderFeature1 => '무손실 FLAC 품질로 트랙 다운로드';
+
+  @override
+  String get setupModeDownloaderFeature2 => '오프라인 감상을 위해 기기에 음악 저장';
+
+  @override
+  String get setupModeDownloaderFeature3 => '로컬 음악 라이브러리 관리';
+
+  @override
+  String get setupModeStreamingTitle => '스트리밍';
+
+  @override
+  String get setupModeStreamingFeature1 => '다운로드 없이 트랙을 즉시 스트리밍';
+
+  @override
+  String get setupModeStreamingFeature2 => 'Smart Queue가 자동으로 새로운 음악을 발견합니다';
+
+  @override
+  String get setupModeStreamingFeature3 => '재생 컨트롤로 원하는 트랙을 온디맨드 재생';
+
+  @override
+  String get setupModeChangeableLater => '설정에서 언제든지 모드를 전환할 수 있습니다.';
+
+  @override
+  String get settingsSmartQueueTitle => 'Smart Queue';
+
+  @override
+  String get settingsSmartQueueSubtitle => '유사한 트랙을 자동으로 검색하여 대기열에 추가';
 }

@@ -3215,6 +3215,54 @@ class AppLocalizationsEs extends AppLocalizations {
   String selectionBatchConvertSuccess(int success, int total, String format) {
     return 'Converted $success of $total tracks to $format';
   }
+
+  @override
+  String get setupModeSelectionTitle => 'Elige tu modo';
+
+  @override
+  String get setupModeSelectionDescription =>
+      '¿Cómo te gustaría usar SpotiFLAC? Puedes cambiarlo más tarde en Ajustes.';
+
+  @override
+  String get setupModeDownloaderTitle => 'Descargador';
+
+  @override
+  String get setupModeDownloaderFeature1 =>
+      'Descarga pistas en calidad FLAC sin pérdida';
+
+  @override
+  String get setupModeDownloaderFeature2 =>
+      'Guarda música en tu dispositivo para escuchar sin conexión';
+
+  @override
+  String get setupModeDownloaderFeature3 =>
+      'Gestiona tu biblioteca de música local';
+
+  @override
+  String get setupModeStreamingTitle => 'Streaming';
+
+  @override
+  String get setupModeStreamingFeature1 =>
+      'Transmite pistas al instante sin descargar';
+
+  @override
+  String get setupModeStreamingFeature2 =>
+      'Smart Queue descubre automáticamente nueva música para ti';
+
+  @override
+  String get setupModeStreamingFeature3 =>
+      'Reproduce cualquier pista bajo demanda con controles de reproducción';
+
+  @override
+  String get setupModeChangeableLater =>
+      'Puedes cambiar entre modos en cualquier momento en Ajustes.';
+
+  @override
+  String get settingsSmartQueueTitle => 'Smart Queue';
+
+  @override
+  String get settingsSmartQueueSubtitle =>
+      'Descubre y añade automáticamente pistas similares a tu cola de reproducción';
 }
 
 /// The translations for Spanish Castilian, as used in Spain (`es_ES`).
@@ -6181,4 +6229,52 @@ class AppLocalizationsEsEs extends AppLocalizationsEs {
 
   @override
   String get trackConvertFailed => 'Conversion failed';
+
+  @override
+  String get setupModeSelectionTitle => 'Elige tu modo';
+
+  @override
+  String get setupModeSelectionDescription =>
+      '¿Cómo te gustaría usar SpotiFLAC? Puedes cambiarlo más tarde en Ajustes.';
+
+  @override
+  String get setupModeDownloaderTitle => 'Descargador';
+
+  @override
+  String get setupModeDownloaderFeature1 =>
+      'Descarga pistas en calidad FLAC sin pérdida';
+
+  @override
+  String get setupModeDownloaderFeature2 =>
+      'Guarda música en tu dispositivo para escuchar sin conexión';
+
+  @override
+  String get setupModeDownloaderFeature3 =>
+      'Gestiona tu biblioteca de música local';
+
+  @override
+  String get setupModeStreamingTitle => 'Streaming';
+
+  @override
+  String get setupModeStreamingFeature1 =>
+      'Transmite pistas al instante sin descargar';
+
+  @override
+  String get setupModeStreamingFeature2 =>
+      'Smart Queue descubre automáticamente nueva música para ti';
+
+  @override
+  String get setupModeStreamingFeature3 =>
+      'Reproduce cualquier pista bajo demanda con controles de reproducción';
+
+  @override
+  String get setupModeChangeableLater =>
+      'Puedes cambiar entre modos en cualquier momento en Ajustes.';
+
+  @override
+  String get settingsSmartQueueTitle => 'Smart Queue';
+
+  @override
+  String get settingsSmartQueueSubtitle =>
+      'Descubre y añade automáticamente pistas similares a tu cola de reproducción';
 }
