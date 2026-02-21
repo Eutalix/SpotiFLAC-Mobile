@@ -419,6 +419,14 @@ class _QueueTabState extends ConsumerState<QueueTab> {
   String? _filterCacheQuality;
   String? _filterCacheFormat;
   String _filterCacheSortMode = 'latest';
+  _HistoryStats? _groupedAlbumFilterHistoryStatsCache;
+  String _groupedAlbumFilterSearchQuery = '';
+  String? _groupedAlbumFilterSource;
+  String? _groupedAlbumFilterQuality;
+  String? _groupedAlbumFilterFormat;
+  String _groupedAlbumFilterSortMode = 'latest';
+  List<_GroupedAlbum> _filteredGroupedAlbumsCache = const [];
+  List<_GroupedLocalAlbum> _filteredGroupedLocalAlbumsCache = const [];
   // Advanced filters
   String? _filterSource; // null = all, 'downloaded', 'local'
   String? _filterQuality; // null = all, 'hires', 'cd', 'lossy'
@@ -1505,6 +1513,46 @@ class _QueueTabState extends ConsumerState<QueueTab> {
     return result;
   }
 
+  ({List<_GroupedAlbum> albums, List<_GroupedLocalAlbum> localAlbums})
+  _resolveFilteredGroupedAlbums(_HistoryStats historyStats) {
+    final cacheValid =
+        identical(_groupedAlbumFilterHistoryStatsCache, historyStats) &&
+        _groupedAlbumFilterSearchQuery == _searchQuery &&
+        _groupedAlbumFilterSource == _filterSource &&
+        _groupedAlbumFilterQuality == _filterQuality &&
+        _groupedAlbumFilterFormat == _filterFormat &&
+        _groupedAlbumFilterSortMode == _sortMode;
+
+    if (cacheValid) {
+      return (
+        albums: _filteredGroupedAlbumsCache,
+        localAlbums: _filteredGroupedLocalAlbumsCache,
+      );
+    }
+
+    final filteredGroupedAlbums = _filterGroupedAlbums(
+      historyStats.groupedAlbums,
+      _searchQuery,
+    );
+    final filteredGroupedLocalAlbums = _filterGroupedLocalAlbums(
+      historyStats.groupedLocalAlbums,
+      _searchQuery,
+    );
+
+    _groupedAlbumFilterHistoryStatsCache = historyStats;
+    _groupedAlbumFilterSearchQuery = _searchQuery;
+    _groupedAlbumFilterSource = _filterSource;
+    _groupedAlbumFilterQuality = _filterQuality;
+    _groupedAlbumFilterFormat = _filterFormat;
+    _groupedAlbumFilterSortMode = _sortMode;
+    _filteredGroupedAlbumsCache = filteredGroupedAlbums;
+    _filteredGroupedLocalAlbumsCache = filteredGroupedLocalAlbums;
+    return (
+      albums: filteredGroupedAlbums,
+      localAlbums: filteredGroupedLocalAlbums,
+    );
+  }
+
   Set<String> _getAvailableFormats(List<UnifiedLibraryItem> items) {
     final formats = <String>{};
     for (final item in items) {
@@ -2411,16 +2459,9 @@ class _QueueTabState extends ConsumerState<QueueTab> {
     final historyStats =
         _historyStatsCache ??
         _buildHistoryStats(allHistoryItems, localLibraryItems);
-    final groupedAlbums = historyStats.groupedAlbums;
-    final groupedLocalAlbums = historyStats.groupedLocalAlbums;
-    final filteredGroupedAlbums = _filterGroupedAlbums(
-      groupedAlbums,
-      _searchQuery,
-    );
-    final filteredGroupedLocalAlbums = _filterGroupedLocalAlbums(
-      groupedLocalAlbums,
-      _searchQuery,
-    );
+    final filteredGrouped = _resolveFilteredGroupedAlbums(historyStats);
+    final filteredGroupedAlbums = filteredGrouped.albums;
+    final filteredGroupedLocalAlbums = filteredGrouped.localAlbums;
     final albumCount = historyStats.totalAlbumCount;
     final singleCount = historyStats.totalSingleTracks;
     _prepareFilterContentCache(

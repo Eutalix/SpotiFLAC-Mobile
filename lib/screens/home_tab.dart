@@ -65,6 +65,22 @@ class _CsvImportOptions {
   });
 }
 
+class _SearchResultBuckets {
+  final List<Track> realTracks;
+  final List<int> realTrackIndexes;
+  final List<Track> albumItems;
+  final List<Track> playlistItems;
+  final List<Track> artistItems;
+
+  const _SearchResultBuckets({
+    required this.realTracks,
+    required this.realTrackIndexes,
+    required this.albumItems,
+    required this.playlistItems,
+    required this.artistItems,
+  });
+}
+
 _RecentAccessView _buildRecentAccessViewData(
   List<RecentAccessItem> items,
   List<DownloadHistoryItem> historyItems,
@@ -182,6 +198,8 @@ class _HomeTabState extends ConsumerState<HomeTab>
   bool _embeddedCoverRefreshScheduled = false;
   List<Extension>? _thumbnailSizesExtensionsCache;
   Map<String, (double, double)>? _thumbnailSizesCache;
+  List<Track>? _searchBucketsSourceTracks;
+  _SearchResultBuckets? _searchBucketsCache;
 
   double _responsiveScale({
     required BuildContext context,
@@ -324,6 +342,74 @@ class _HomeTabState extends ConsumerState<HomeTab>
     _thumbnailSizesExtensionsCache = extensions;
     _thumbnailSizesCache = map;
     return map;
+  }
+
+  List<SearchFilter> _resolveSearchFilters(
+    String? currentSearchProvider,
+    List<Extension> extensions,
+  ) {
+    final isUsingExtensionSearch =
+        currentSearchProvider != null &&
+        currentSearchProvider.isNotEmpty &&
+        extensions.any((e) => e.id == currentSearchProvider && e.enabled);
+
+    if (isUsingExtensionSearch) {
+      final currentSearchExtension = extensions
+          .where((e) => e.id == currentSearchProvider && e.enabled)
+          .firstOrNull;
+      final filters = currentSearchExtension?.searchBehavior?.filters;
+      if (filters != null && filters.isNotEmpty) {
+        return filters;
+      }
+    }
+
+    return const [
+      SearchFilter(id: 'track', label: 'Tracks', icon: 'music'),
+      SearchFilter(id: 'artist', label: 'Artists', icon: 'artist'),
+      SearchFilter(id: 'album', label: 'Albums', icon: 'album'),
+      SearchFilter(id: 'playlist', label: 'Playlists', icon: 'playlist'),
+    ];
+  }
+
+  _SearchResultBuckets _getSearchResultBuckets(List<Track> tracks) {
+    final cached = _searchBucketsCache;
+    if (cached != null && identical(tracks, _searchBucketsSourceTracks)) {
+      return cached;
+    }
+
+    final realTracks = <Track>[];
+    final realTrackIndexes = <int>[];
+    final albumItems = <Track>[];
+    final playlistItems = <Track>[];
+    final artistItems = <Track>[];
+
+    for (int i = 0; i < tracks.length; i++) {
+      final track = tracks[i];
+      if (!track.isCollection) {
+        realTracks.add(track);
+        realTrackIndexes.add(i);
+      }
+      if (track.isAlbumItem) {
+        albumItems.add(track);
+      }
+      if (track.isPlaylistItem) {
+        playlistItems.add(track);
+      }
+      if (track.isArtistItem) {
+        artistItems.add(track);
+      }
+    }
+
+    final buckets = _SearchResultBuckets(
+      realTracks: realTracks,
+      realTrackIndexes: realTrackIndexes,
+      albumItems: albumItems,
+      playlistItems: playlistItems,
+      artistItems: artistItems,
+    );
+    _searchBucketsSourceTracks = tracks;
+    _searchBucketsCache = buckets;
+    return buckets;
   }
 
   void _onSearchFocusChanged() {
@@ -816,25 +902,22 @@ class _HomeTabState extends ConsumerState<HomeTab>
   Widget build(BuildContext context) {
     super.build(context);
 
-    final tracks = ref.watch(trackProvider.select((s) => s.tracks));
-    final searchArtists = ref.watch(
-      trackProvider.select((s) => s.searchArtists),
-    );
-    final searchAlbums = ref.watch(trackProvider.select((s) => s.searchAlbums));
-    final searchPlaylists = ref.watch(
-      trackProvider.select((s) => s.searchPlaylists),
+    final hasActualResults = ref.watch(
+      trackProvider.select(
+        (s) =>
+            s.tracks.isNotEmpty ||
+            (s.searchArtists != null && s.searchArtists!.isNotEmpty) ||
+            (s.searchAlbums != null && s.searchAlbums!.isNotEmpty) ||
+            (s.searchPlaylists != null && s.searchPlaylists!.isNotEmpty),
+      ),
     );
     final isLoading = ref.watch(trackProvider.select((s) => s.isLoading));
-    final error = ref.watch(trackProvider.select((s) => s.error));
     final hasSearchedBefore = ref.watch(
       settingsProvider.select((s) => s.hasSearchedBefore),
     );
 
-    final exploreSections = ref.watch(
-      exploreProvider.select((s) => s.sections),
-    );
-    final exploreGreeting = ref.watch(
-      exploreProvider.select((s) => s.greeting),
+    final hasExploreContent = ref.watch(
+      exploreProvider.select((s) => s.sections.isNotEmpty),
     );
     final exploreLoading = ref.watch(
       exploreProvider.select((s) => s.isLoading),
@@ -846,11 +929,6 @@ class _HomeTabState extends ConsumerState<HomeTab>
     );
 
     final colorScheme = Theme.of(context).colorScheme;
-    final hasActualResults =
-        tracks.isNotEmpty ||
-        (searchArtists != null && searchArtists.isNotEmpty) ||
-        (searchAlbums != null && searchAlbums.isNotEmpty) ||
-        (searchPlaylists != null && searchPlaylists.isNotEmpty);
     final searchText = _urlController.text.trim();
     final hasSearchInput = searchText.isNotEmpty;
     final isSearchFocused = _searchFocusNode.hasFocus;
@@ -873,63 +951,12 @@ class _HomeTabState extends ConsumerState<HomeTab>
         !isLoading;
     final hasResults =
         hasSearchInput || hasActualResults || isLoading || showRecentAccess;
-    final recentAccessView = showRecentAccess
-        ? ref.watch(recentAccessViewProvider)
-        : null;
-
-    final hasExploreContent = exploreSections.isNotEmpty;
     final showExplore =
         !hasActualResults &&
         !isLoading &&
         !showRecentAccess &&
         (hasHomeFeedExtension || hasExploreContent) &&
         hasExploreContent;
-
-    // Get current search extension and its filters
-    final currentSearchProvider = ref.watch(
-      settingsProvider.select((s) => s.searchProvider),
-    );
-    final extensions = ref.watch(extensionProvider.select((s) => s.extensions));
-    final selectedSearchFilter = ref.watch(
-      trackProvider.select((s) => s.selectedSearchFilter),
-    );
-    final searchExtensionId = ref.watch(
-      trackProvider.select((s) => s.searchExtensionId),
-    );
-    final localLibrarySettings = ref.watch(
-      settingsProvider.select(
-        (s) => (s.localLibraryEnabled, s.localLibraryShowDuplicates),
-      ),
-    );
-    final showLocalLibraryIndicator =
-        localLibrarySettings.$1 && localLibrarySettings.$2;
-    final thumbnailSizesByExtensionId = _getThumbnailSizesByExtensionId(
-      extensions,
-    );
-    Extension? currentSearchExtension;
-    List<SearchFilter> searchFilters = [];
-
-    final isUsingExtensionSearch =
-        currentSearchProvider != null &&
-        currentSearchProvider.isNotEmpty &&
-        extensions.any((e) => e.id == currentSearchProvider && e.enabled);
-
-    if (isUsingExtensionSearch) {
-      currentSearchExtension = extensions
-          .where((e) => e.id == currentSearchProvider && e.enabled)
-          .firstOrNull;
-      if (currentSearchExtension?.searchBehavior?.filters.isNotEmpty == true) {
-        searchFilters = currentSearchExtension!.searchBehavior!.filters;
-      }
-    } else {
-      // Default Deezer filters
-      searchFilters = const [
-        SearchFilter(id: 'track', label: 'Tracks', icon: 'music'),
-        SearchFilter(id: 'artist', label: 'Artists', icon: 'artist'),
-        SearchFilter(id: 'album', label: 'Albums', icon: 'album'),
-        SearchFilter(id: 'playlist', label: 'Playlists', icon: 'playlist'),
-      ];
-    }
 
     if (hasActualResults &&
         isShowingRecentAccess &&
@@ -1053,20 +1080,45 @@ class _HomeTabState extends ConsumerState<HomeTab>
               ),
 
               // Search filter bar (only shown when has search results)
-              if (searchFilters.isNotEmpty &&
-                  hasActualResults &&
-                  !showRecentAccess)
-                SliverToBoxAdapter(
-                  child: _buildSearchFilterBar(
-                    searchFilters,
-                    selectedSearchFilter,
-                    colorScheme,
-                  ),
+              if (hasActualResults && !showRecentAccess)
+                Consumer(
+                  builder: (context, ref, _) {
+                    final currentSearchProvider = ref.watch(
+                      settingsProvider.select((s) => s.searchProvider),
+                    );
+                    final extensions = ref.watch(
+                      extensionProvider.select((s) => s.extensions),
+                    );
+                    final selectedSearchFilter = ref.watch(
+                      trackProvider.select((s) => s.selectedSearchFilter),
+                    );
+                    final searchFilters = _resolveSearchFilters(
+                      currentSearchProvider,
+                      extensions,
+                    );
+                    if (searchFilters.isEmpty) {
+                      return const SliverToBoxAdapter(child: SizedBox.shrink());
+                    }
+                    return SliverToBoxAdapter(
+                      child: _buildSearchFilterBar(
+                        searchFilters,
+                        selectedSearchFilter,
+                        colorScheme,
+                      ),
+                    );
+                  },
                 ),
 
               if (showRecentAccess)
-                SliverToBoxAdapter(
-                  child: _buildRecentAccess(recentAccessView!, colorScheme),
+                Consumer(
+                  builder: (context, ref, _) {
+                    final recentAccessView = ref.watch(
+                      recentAccessViewProvider,
+                    );
+                    return SliverToBoxAdapter(
+                      child: _buildRecentAccess(recentAccessView, colorScheme),
+                    );
+                  },
                 ),
 
               SliverToBoxAdapter(
@@ -1108,10 +1160,22 @@ class _HomeTabState extends ConsumerState<HomeTab>
               ),
 
               if (showExplore)
-                ..._buildExploreSections(
-                  exploreSections,
-                  exploreGreeting,
-                  colorScheme,
+                Consumer(
+                  builder: (context, ref, _) {
+                    final exploreSections = ref.watch(
+                      exploreProvider.select((s) => s.sections),
+                    );
+                    final exploreGreeting = ref.watch(
+                      exploreProvider.select((s) => s.greeting),
+                    );
+                    return SliverMainAxisGroup(
+                      slivers: _buildExploreSections(
+                        exploreSections,
+                        exploreGreeting,
+                        colorScheme,
+                      ),
+                    );
+                  },
                 ),
 
               if (hasHomeFeedExtension &&
@@ -1125,18 +1189,63 @@ class _HomeTabState extends ConsumerState<HomeTab>
                   ),
                 ),
 
-              ..._buildSearchResults(
-                tracks: tracks,
-                searchArtists: searchArtists,
-                searchAlbums: searchAlbums,
-                searchPlaylists: searchPlaylists,
-                isLoading: isLoading,
-                error: error,
-                colorScheme: colorScheme,
-                hasResults: hasActualResults || isLoading,
-                searchExtensionId: searchExtensionId,
-                showLocalLibraryIndicator: showLocalLibraryIndicator,
-                thumbnailSizesByExtensionId: thumbnailSizesByExtensionId,
+              Consumer(
+                builder: (context, ref, _) {
+                  final tracks = ref.watch(
+                    trackProvider.select((s) => s.tracks),
+                  );
+                  final searchArtists = ref.watch(
+                    trackProvider.select((s) => s.searchArtists),
+                  );
+                  final searchAlbums = ref.watch(
+                    trackProvider.select((s) => s.searchAlbums),
+                  );
+                  final searchPlaylists = ref.watch(
+                    trackProvider.select((s) => s.searchPlaylists),
+                  );
+                  final isLoading = ref.watch(
+                    trackProvider.select((s) => s.isLoading),
+                  );
+                  final error = ref.watch(trackProvider.select((s) => s.error));
+                  final searchExtensionId = ref.watch(
+                    trackProvider.select((s) => s.searchExtensionId),
+                  );
+                  final localLibrarySettings = ref.watch(
+                    settingsProvider.select(
+                      (s) =>
+                          (s.localLibraryEnabled, s.localLibraryShowDuplicates),
+                    ),
+                  );
+                  final extensions = ref.watch(
+                    extensionProvider.select((s) => s.extensions),
+                  );
+                  final showLocalLibraryIndicator =
+                      localLibrarySettings.$1 && localLibrarySettings.$2;
+                  final thumbnailSizesByExtensionId =
+                      _getThumbnailSizesByExtensionId(extensions);
+                  final hasResults =
+                      tracks.isNotEmpty ||
+                      (searchArtists != null && searchArtists.isNotEmpty) ||
+                      (searchAlbums != null && searchAlbums.isNotEmpty) ||
+                      (searchPlaylists != null && searchPlaylists.isNotEmpty) ||
+                      isLoading;
+
+                  return SliverMainAxisGroup(
+                    slivers: _buildSearchResults(
+                      tracks: tracks,
+                      searchArtists: searchArtists,
+                      searchAlbums: searchAlbums,
+                      searchPlaylists: searchPlaylists,
+                      isLoading: isLoading,
+                      error: error,
+                      colorScheme: colorScheme,
+                      hasResults: hasResults,
+                      searchExtensionId: searchExtensionId,
+                      showLocalLibraryIndicator: showLocalLibraryIndicator,
+                      thumbnailSizesByExtensionId: thumbnailSizesByExtensionId,
+                    ),
+                  );
+                },
               ),
             ],
           ),
@@ -2165,28 +2274,12 @@ class _HomeTabState extends ConsumerState<HomeTab>
       return [const SliverToBoxAdapter(child: SizedBox.shrink())];
     }
 
-    final realTracks = <Track>[];
-    final realTrackIndexes = <int>[];
-    final albumItems = <Track>[];
-    final playlistItems = <Track>[];
-    final artistItems = <Track>[];
-
-    for (int i = 0; i < tracks.length; i++) {
-      final track = tracks[i];
-      if (!track.isCollection) {
-        realTracks.add(track);
-        realTrackIndexes.add(i);
-      }
-      if (track.isAlbumItem) {
-        albumItems.add(track);
-      }
-      if (track.isPlaylistItem) {
-        playlistItems.add(track);
-      }
-      if (track.isArtistItem) {
-        artistItems.add(track);
-      }
-    }
+    final buckets = _getSearchResultBuckets(tracks);
+    final realTracks = buckets.realTracks;
+    final realTrackIndexes = buckets.realTrackIndexes;
+    final albumItems = buckets.albumItems;
+    final playlistItems = buckets.playlistItems;
+    final artistItems = buckets.artistItems;
 
     final slivers = <Widget>[
       if (error != null)

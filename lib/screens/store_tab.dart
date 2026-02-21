@@ -43,8 +43,30 @@ class _StoreTabState extends ConsumerState<StoreTab> {
 
   @override
   Widget build(BuildContext context) {
-    final state = ref.watch(storeProvider);
-    final filteredExtensions = state.filteredExtensions;
+    final storeFilterState = ref.watch(
+      storeProvider.select(
+        (s) => (s.extensions, s.selectedCategory, s.searchQuery),
+      ),
+    );
+    final extensions = storeFilterState.$1;
+    final selectedCategory = storeFilterState.$2;
+    final searchQuery = storeFilterState.$3;
+    final isLoading = ref.watch(storeProvider.select((s) => s.isLoading));
+    final error = ref.watch(storeProvider.select((s) => s.error));
+    final downloadingId = ref.watch(
+      storeProvider.select((s) => s.downloadingId),
+    );
+    final filteredExtensions = StoreState(
+      extensions: extensions,
+      selectedCategory: selectedCategory,
+      searchQuery: searchQuery,
+    ).filteredExtensions;
+    if (_searchController.text != searchQuery) {
+      _searchController.value = TextEditingValue(
+        text: searchQuery,
+        selection: TextSelection.collapsed(offset: searchQuery.length),
+      );
+    }
     final colorScheme = Theme.of(context).colorScheme;
     final topPadding = normalizedHeaderTopPadding(context);
 
@@ -90,41 +112,46 @@ class _StoreTabState extends ConsumerState<StoreTab> {
             SliverToBoxAdapter(
               child: Padding(
                 padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
-                child: TextField(
-                  controller: _searchController,
-                  decoration: InputDecoration(
-                    hintText: context.l10n.storeSearch,
-                    prefixIcon: const Icon(Icons.search),
-                    suffixIcon: _searchController.text.isNotEmpty
-                        ? IconButton(
-                            icon: const Icon(Icons.clear),
-                            onPressed: () {
-                              _searchController.clear();
-                              ref
-                                  .read(storeProvider.notifier)
-                                  .setSearchQuery('');
-                            },
-                          )
-                        : null,
-                    border: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(28),
-                      borderSide: BorderSide.none,
-                    ),
-                    filled: true,
-                    fillColor: Theme.of(context).brightness == Brightness.dark
-                        ? Color.alphaBlend(
-                            Colors.white.withValues(alpha: 0.08),
-                            colorScheme.surface,
-                          )
-                        : colorScheme.surfaceContainerHighest,
-                    contentPadding: const EdgeInsets.symmetric(
-                      horizontal: 16,
-                      vertical: 12,
-                    ),
-                  ),
-                  onChanged: (value) {
-                    ref.read(storeProvider.notifier).setSearchQuery(value);
-                    setState(() {});
+                child: ValueListenableBuilder<TextEditingValue>(
+                  valueListenable: _searchController,
+                  builder: (context, value, _) {
+                    return TextField(
+                      controller: _searchController,
+                      decoration: InputDecoration(
+                        hintText: context.l10n.storeSearch,
+                        prefixIcon: const Icon(Icons.search),
+                        suffixIcon: value.text.isNotEmpty
+                            ? IconButton(
+                                icon: const Icon(Icons.clear),
+                                onPressed: () {
+                                  _searchController.clear();
+                                  ref
+                                      .read(storeProvider.notifier)
+                                      .setSearchQuery('');
+                                },
+                              )
+                            : null,
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(28),
+                          borderSide: BorderSide.none,
+                        ),
+                        filled: true,
+                        fillColor:
+                            Theme.of(context).brightness == Brightness.dark
+                            ? Color.alphaBlend(
+                                Colors.white.withValues(alpha: 0.08),
+                                colorScheme.surface,
+                              )
+                            : colorScheme.surfaceContainerHighest,
+                        contentPadding: const EdgeInsets.symmetric(
+                          horizontal: 16,
+                          vertical: 12,
+                        ),
+                      ),
+                      onChanged: (value) {
+                        ref.read(storeProvider.notifier).setSearchQuery(value);
+                      },
+                    );
                   },
                 ),
               ),
@@ -142,7 +169,7 @@ class _StoreTabState extends ConsumerState<StoreTab> {
                     _CategoryChip(
                       label: context.l10n.storeFilterAll,
                       icon: Icons.apps,
-                      isSelected: state.selectedCategory == null,
+                      isSelected: selectedCategory == null,
                       onTap: () =>
                           ref.read(storeProvider.notifier).setCategory(null),
                     ),
@@ -150,8 +177,7 @@ class _StoreTabState extends ConsumerState<StoreTab> {
                     _CategoryChip(
                       label: context.l10n.storeFilterMetadata,
                       icon: Icons.label_outline,
-                      isSelected:
-                          state.selectedCategory == StoreCategory.metadata,
+                      isSelected: selectedCategory == StoreCategory.metadata,
                       onTap: () => ref
                           .read(storeProvider.notifier)
                           .setCategory(StoreCategory.metadata),
@@ -160,8 +186,7 @@ class _StoreTabState extends ConsumerState<StoreTab> {
                     _CategoryChip(
                       label: context.l10n.storeFilterDownload,
                       icon: Icons.download_outlined,
-                      isSelected:
-                          state.selectedCategory == StoreCategory.download,
+                      isSelected: selectedCategory == StoreCategory.download,
                       onTap: () => ref
                           .read(storeProvider.notifier)
                           .setCategory(StoreCategory.download),
@@ -170,8 +195,7 @@ class _StoreTabState extends ConsumerState<StoreTab> {
                     _CategoryChip(
                       label: context.l10n.storeFilterUtility,
                       icon: Icons.build_outlined,
-                      isSelected:
-                          state.selectedCategory == StoreCategory.utility,
+                      isSelected: selectedCategory == StoreCategory.utility,
                       onTap: () => ref
                           .read(storeProvider.notifier)
                           .setCategory(StoreCategory.utility),
@@ -180,8 +204,7 @@ class _StoreTabState extends ConsumerState<StoreTab> {
                     _CategoryChip(
                       label: context.l10n.storeFilterLyrics,
                       icon: Icons.lyrics_outlined,
-                      isSelected:
-                          state.selectedCategory == StoreCategory.lyrics,
+                      isSelected: selectedCategory == StoreCategory.lyrics,
                       onTap: () => ref
                           .read(storeProvider.notifier)
                           .setCategory(StoreCategory.lyrics),
@@ -190,8 +213,7 @@ class _StoreTabState extends ConsumerState<StoreTab> {
                     _CategoryChip(
                       label: context.l10n.storeFilterIntegration,
                       icon: Icons.link,
-                      isSelected:
-                          state.selectedCategory == StoreCategory.integration,
+                      isSelected: selectedCategory == StoreCategory.integration,
                       onTap: () => ref
                           .read(storeProvider.notifier)
                           .setCategory(StoreCategory.integration),
@@ -201,16 +223,20 @@ class _StoreTabState extends ConsumerState<StoreTab> {
               ),
             ),
 
-            if (state.isLoading && state.extensions.isEmpty)
+            if (isLoading && extensions.isEmpty)
               const SliverFillRemaining(
                 child: Center(child: CircularProgressIndicator()),
               )
-            else if (state.error != null && state.extensions.isEmpty)
-              SliverFillRemaining(
-                child: _buildErrorState(state.error!, colorScheme),
-              )
+            else if (error != null && extensions.isEmpty)
+              SliverFillRemaining(child: _buildErrorState(error, colorScheme))
             else if (filteredExtensions.isEmpty)
-              SliverFillRemaining(child: _buildEmptyState(state, colorScheme))
+              SliverFillRemaining(
+                child: _buildEmptyState(
+                  hasFilters:
+                      searchQuery.isNotEmpty || selectedCategory != null,
+                  colorScheme: colorScheme,
+                ),
+              )
             else ...[
               SliverToBoxAdapter(
                 child: Padding(
@@ -234,7 +260,7 @@ class _StoreTabState extends ConsumerState<StoreTab> {
                       return _ExtensionItem(
                         extension: ext,
                         showDivider: index < filteredExtensions.length - 1,
-                        isDownloading: state.downloadingId == ext.id,
+                        isDownloading: downloadingId == ext.id,
                         onInstall: () => _installExtension(ext),
                         onUpdate: () => _updateExtension(ext),
                         onTap: () => _showExtensionDetails(ext),
@@ -286,10 +312,10 @@ class _StoreTabState extends ConsumerState<StoreTab> {
     );
   }
 
-  Widget _buildEmptyState(StoreState state, ColorScheme colorScheme) {
-    final hasFilters =
-        state.searchQuery.isNotEmpty || state.selectedCategory != null;
-
+  Widget _buildEmptyState({
+    required bool hasFilters,
+    required ColorScheme colorScheme,
+  }) {
     return Center(
       child: Column(
         mainAxisSize: MainAxisSize.min,

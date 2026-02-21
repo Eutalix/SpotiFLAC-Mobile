@@ -16,18 +16,29 @@ class MiniPlayerBar extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final state = ref.watch(playbackProvider);
-    final playbackError = _localizedPlaybackError(context, state);
-    final item = state.currentItem;
+    final stateSnapshot = ref.watch(
+      playbackProvider.select(
+        (s) => (
+          currentItem: s.currentItem,
+          isPlaying: s.isPlaying,
+          isBuffering: s.isBuffering,
+          isLoading: s.isLoading,
+          hasNext: s.hasNext,
+          repeatMode: s.repeatMode,
+          error: s.error,
+          errorType: s.errorType,
+        ),
+      ),
+    );
+    final playbackError = _localizedPlaybackErrorFromRaw(
+      context,
+      stateSnapshot.error,
+      stateSnapshot.errorType,
+    );
+    final item = stateSnapshot.currentItem;
     if (item == null) return const SizedBox.shrink();
 
     final colorScheme = Theme.of(context).colorScheme;
-    final durationMs = state.duration.inMilliseconds;
-    final positionMs = state.position.inMilliseconds.clamp(
-      0,
-      durationMs > 0 ? durationMs : 0,
-    );
-    final progress = durationMs > 0 ? positionMs / durationMs : 0.0;
 
     return Material(
       color: colorScheme.surfaceContainerHighest,
@@ -36,12 +47,7 @@ class MiniPlayerBar extends ConsumerWidget {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            // Progress bar
-            LinearProgressIndicator(
-              value: progress,
-              minHeight: 2,
-              backgroundColor: colorScheme.surfaceContainerHighest,
-            ),
+            const _MiniPlayerProgressBar(),
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
               child: Row(
@@ -87,7 +93,7 @@ class MiniPlayerBar extends ConsumerWidget {
                       ),
                     ),
                   // Loading indicator
-                  if (state.isBuffering || state.isLoading)
+                  if (stateSnapshot.isBuffering || stateSnapshot.isLoading)
                     const Padding(
                       padding: EdgeInsets.only(right: 8),
                       child: SizedBox(
@@ -99,7 +105,7 @@ class MiniPlayerBar extends ConsumerWidget {
                   // Play / Pause
                   IconButton(
                     icon: Icon(
-                      state.isPlaying
+                      stateSnapshot.isPlaying
                           ? Icons.pause_rounded
                           : Icons.play_arrow_rounded,
                     ),
@@ -107,7 +113,8 @@ class MiniPlayerBar extends ConsumerWidget {
                         ref.read(playbackProvider.notifier).togglePlayPause(),
                   ),
                   // Next
-                  if (state.hasNext || state.repeatMode == RepeatMode.all)
+                  if (stateSnapshot.hasNext ||
+                      stateSnapshot.repeatMode == RepeatMode.all)
                     IconButton(
                       icon: const Icon(Icons.skip_next_rounded, size: 22),
                       onPressed: () =>
@@ -150,6 +157,32 @@ class MiniPlayerBar extends ConsumerWidget {
         transitionDuration: const Duration(milliseconds: 350),
         reverseTransitionDuration: const Duration(milliseconds: 300),
       ),
+    );
+  }
+}
+
+class _MiniPlayerProgressBar extends ConsumerWidget {
+  const _MiniPlayerProgressBar();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final progressState = ref.watch(
+      playbackProvider.select(
+        (s) => (position: s.position, duration: s.duration),
+      ),
+    );
+    final colorScheme = Theme.of(context).colorScheme;
+    final durationMs = progressState.duration.inMilliseconds;
+    final positionMs = progressState.position.inMilliseconds.clamp(
+      0,
+      durationMs > 0 ? durationMs : 0,
+    );
+    final progress = durationMs > 0 ? positionMs / durationMs : 0.0;
+
+    return LinearProgressIndicator(
+      value: progress,
+      minHeight: 2,
+      backgroundColor: colorScheme.surfaceContainerHighest,
     );
   }
 }
@@ -527,14 +560,22 @@ class _FullScreenPlayerState extends ConsumerState<_FullScreenPlayer> {
 }
 
 String? _localizedPlaybackError(BuildContext context, PlaybackState state) {
-  final raw = (state.error ?? '').trim();
+  return _localizedPlaybackErrorFromRaw(context, state.error, state.errorType);
+}
+
+String? _localizedPlaybackErrorFromRaw(
+  BuildContext context,
+  String? error,
+  String? errorType,
+) {
+  final raw = (error ?? '').trim();
   if (raw.isEmpty) {
     return null;
   }
-  if (state.errorType == 'seek_not_supported') {
+  if (errorType == 'seek_not_supported') {
     return context.l10n.errorSeekNotSupported;
   }
-  if (state.errorType == 'not_found') {
+  if (errorType == 'not_found') {
     return context.l10n.errorNoTracksFound;
   }
   return raw;
