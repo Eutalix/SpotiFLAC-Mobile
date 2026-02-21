@@ -169,6 +169,17 @@ class OptionsSettingsPage extends ConsumerWidget {
                     onChanged: (v) =>
                         ref.read(settingsProvider.notifier).setAutoFallback(v),
                   ),
+                  SettingsSwitchItem(
+                    icon: Icons.queue_music_rounded,
+                    title: 'Smart Queue',
+                    subtitle: settings.interactionMode == 'streaming'
+                        ? 'Auto-curate Up Next based on your listening pattern'
+                        : 'Available in Streaming mode',
+                    value: settings.smartQueueEnabled,
+                    onChanged: (v) => ref
+                        .read(settingsProvider.notifier)
+                        .setSmartQueueEnabled(v),
+                  ),
                   if (hasExtensions)
                     SettingsSwitchItem(
                       icon: Icons.extension,

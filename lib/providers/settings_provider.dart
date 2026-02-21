@@ -281,6 +281,11 @@ class SettingsNotifier extends Notifier<AppSettings> {
     _saveSettings();
   }
 
+  void setSmartQueueEnabled(bool enabled) {
+    state = state.copyWith(smartQueueEnabled: enabled);
+    _saveSettings();
+  }
+
   void setEmbedLyrics(bool enabled) {
     state = state.copyWith(embedLyrics: enabled);
     _saveSettings();

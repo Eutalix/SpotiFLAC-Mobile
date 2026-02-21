@@ -180,6 +180,14 @@ import Gobackend  // Import Go framework
             let response = GobackendSearchSpotifyAll(query, Int(trackLimit), Int(artistLimit), &error)
             if let error = error { throw error }
             return response
+
+        case "getSpotifyRelatedArtists":
+            let args = call.arguments as! [String: Any]
+            let artistId = args["artist_id"] as! String
+            let limit = args["limit"] as? Int ?? 12
+            let response = GobackendGetSpotifyRelatedArtists(artistId, Int(limit), &error)
+            if let error = error { throw error }
+            return response
             
         case "checkAvailability":
             let args = call.arguments as! [String: Any]
@@ -391,6 +399,14 @@ import Gobackend  // Import Go framework
             let artistLimit = args["artist_limit"] as? Int ?? 3
             let filter = args["filter"] as? String ?? ""
             let response = GobackendSearchDeezerAll(query, Int(trackLimit), Int(artistLimit), filter, &error)
+            if let error = error { throw error }
+            return response
+
+        case "getDeezerRelatedArtists":
+            let args = call.arguments as! [String: Any]
+            let artistId = args["artist_id"] as! String
+            let limit = args["limit"] as? Int ?? 12
+            let response = GobackendGetDeezerRelatedArtists(artistId, Int(limit), &error)
             if let error = error { throw error }
             return response
 

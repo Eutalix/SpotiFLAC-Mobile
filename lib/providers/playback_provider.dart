@@ -208,9 +208,11 @@ class _SpotiFLACAudioHandler extends audio_service.BaseAudioHandler
 // ─── Controller ──────────────────────────────────────────────────────────────
 class PlaybackController extends Notifier<PlaybackState> {
   static const String _playbackSnapshotKey = 'playback_snapshot_v1';
+  static const String _smartQueueModelKey = 'smart_queue_model_v1';
   final AudioPlayer _player = AudioPlayer();
   final List<StreamSubscription<dynamic>> _subscriptions = [];
   Timer? _snapshotSaveTimer;
+  Timer? _smartQueueModelSaveTimer;
   _SpotiFLACAudioHandler? _audioHandler;
   var _initialized = false;
   static const Duration _prefetchThresholdFloor = Duration(seconds: 12);
@@ -219,12 +221,48 @@ class PlaybackController extends Notifier<PlaybackState> {
   static const Duration _prefetchRetryCooldown = Duration(seconds: 3);
   static const int _maxPrefetchAttemptsPerTrack = 2;
   static const int _prefetchLatencyWindowSize = 12;
+  static const int _smartQueueTriggerRemainingTracks = 2;
+  static const int _smartQueueTargetRemainingTracks = 6;
+  static const int _smartQueueMaxAutoAddsPerSession = 40;
+  static const int _smartQueueRecentPlayedWindow = 40;
+  static const int _smartQueueCandidatePoolLimit = 28;
+  static const int _smartQueueRelatedArtistsLimit = 3;
+  static const int _smartQueueMaxAffinityKeys = 160;
+  static const String _smartQueueSpotifyExtensionId = 'spotify-web';
+  static const Duration _smartQueueRefillCooldown = Duration(seconds: 18);
+  static const Duration _smartQueueSearchCacheTtl = Duration(minutes: 3);
+  static const Duration _smartQueueFeedbackMaxAge = Duration(hours: 6);
+  static const double _smartQueueLearningRate = 0.2;
   int? _prefetchingQueueIndex;
   int? _lastPrefetchAttemptIndex;
   final Map<int, int> _prefetchAttemptCounts = <int, int>{};
   final Map<int, DateTime> _prefetchLastAttemptAt = <int, DateTime>{};
   final Map<String, List<int>> _prefetchLatencyByServiceMs =
       <String, List<int>>{};
+  final Random _smartQueueRandom = Random();
+  final List<String> _recentPlayedTrackKeys = <String>[];
+  final Map<String, _SmartQueueLearningContext>
+  _smartQueuePendingFeedbackByTrack = <String, _SmartQueueLearningContext>{};
+  final Map<String, _SmartQueueCachedResult> _smartQueueSearchCache =
+      <String, _SmartQueueCachedResult>{};
+  final Map<String, _SmartQueueRelatedArtistsCache>
+  _smartQueueRelatedArtistsCache = <String, _SmartQueueRelatedArtistsCache>{};
+  final Map<String, double> _smartQueueWeights = <String, double>{
+    'bias': -0.15,
+    'same_artist': 0.06,
+    'same_album': 0.04,
+    'duration_similarity': 0.8,
+    'source_match': 0.18,
+    'release_year_similarity': 0.32,
+    'artist_affinity': 0.55,
+    'source_affinity': 0.3,
+    'novelty': 0.65,
+  };
+  final Map<String, double> _smartQueueArtistAffinity = <String, double>{};
+  final Map<String, double> _smartQueueSourceAffinity = <String, double>{};
+  bool _smartQueueRefillInFlight = false;
+  DateTime? _lastSmartQueueRefillAt;
+  int _smartQueueAutoAddedCount = 0;
 
   // Shuffle order: indices into queue
   List<int> _shuffleOrder = [];
@@ -250,6 +288,7 @@ class PlaybackController extends Notifier<PlaybackState> {
     unawaited(_configureAudioSession());
     unawaited(_initAudioService());
     unawaited(_restorePlaybackSnapshot());
+    unawaited(_restoreSmartQueueModel());
     _appLifecycleListener ??= AppLifecycleListener(
       onInactive: () => unawaited(_savePlaybackSnapshot()),
       onPause: () => unawaited(_savePlaybackSnapshot()),
@@ -300,6 +339,7 @@ class PlaybackController extends Notifier<PlaybackState> {
             }
             state = state.copyWith(position: position);
             _maybePrefetchNext(position);
+            _maybeTriggerSmartQueueRefill(position);
             _scheduleSnapshotSaveForProgress(position);
           }),
     );
@@ -551,6 +591,12 @@ class PlaybackController extends Notifier<PlaybackState> {
 
   // ─── Track completion ────────────────────────────────────────────────────
   void _onTrackCompleted() {
+    _learnFromCurrentTrackOutcome(completedNaturally: true);
+    final completedItem = state.currentItem;
+    if (completedItem != null) {
+      _rememberRecentPlayed(completedItem);
+    }
+
     if (state.repeatMode == RepeatMode.one) {
       // Replay current track
       unawaited(_restartCurrentTrack(playAfterSeek: true));
@@ -561,10 +607,23 @@ class PlaybackController extends Notifier<PlaybackState> {
     if (nextIndex != null) {
       unawaited(_playQueueIndex(nextIndex));
     } else {
-      // Queue exhausted
-      state = state.copyWith(isPlaying: false, position: Duration.zero);
-      _syncServicePlaybackState(ProcessingState.completed, false);
+      unawaited(_handleQueueExhausted());
     }
+  }
+
+  Future<void> _handleQueueExhausted() async {
+    final added = await _autoRefillSmartQueue(force: true);
+    if (added > 0) {
+      final nextIndex = _resolveNextIndex();
+      if (nextIndex != null) {
+        await _playQueueIndex(nextIndex);
+        return;
+      }
+    }
+
+    // Queue exhausted
+    state = state.copyWith(isPlaying: false, position: Duration.zero);
+    _syncServicePlaybackState(ProcessingState.completed, false);
   }
 
   Future<void> _restartCurrentTrack({bool playAfterSeek = false}) async {
@@ -874,6 +933,75 @@ class PlaybackController extends Notifier<PlaybackState> {
     }
   }
 
+  Future<void> _restoreSmartQueueModel() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final raw = prefs.getString(_smartQueueModelKey);
+      if (raw == null || raw.isEmpty) return;
+
+      final decoded = jsonDecode(raw);
+      if (decoded is! Map) return;
+      final payload = Map<String, dynamic>.from(decoded);
+
+      final weightsRaw = payload['weights'];
+      if (weightsRaw is Map) {
+        for (final entry in weightsRaw.entries) {
+          final key = entry.key.toString();
+          final value = (entry.value as num?)?.toDouble();
+          if (value == null) continue;
+          _smartQueueWeights[key] = value;
+        }
+      }
+
+      _smartQueueArtistAffinity.clear();
+      final artistRaw = payload['artistAffinity'];
+      if (artistRaw is Map) {
+        for (final entry in artistRaw.entries) {
+          final key = entry.key.toString().trim().toLowerCase();
+          if (key.isEmpty) continue;
+          final value = (entry.value as num?)?.toDouble();
+          if (value == null) continue;
+          _smartQueueArtistAffinity[key] = value.clamp(-1.0, 1.0);
+        }
+      }
+
+      _smartQueueSourceAffinity.clear();
+      final sourceRaw = payload['sourceAffinity'];
+      if (sourceRaw is Map) {
+        for (final entry in sourceRaw.entries) {
+          final key = entry.key.toString().trim().toLowerCase();
+          if (key.isEmpty) continue;
+          final value = (entry.value as num?)?.toDouble();
+          if (value == null) continue;
+          _smartQueueSourceAffinity[key] = value.clamp(-1.0, 1.0);
+        }
+      }
+    } catch (e) {
+      _log.w('Failed to restore smart queue model: $e');
+    }
+  }
+
+  void _scheduleSmartQueueModelSave() {
+    _smartQueueModelSaveTimer?.cancel();
+    _smartQueueModelSaveTimer = Timer(const Duration(seconds: 2), () {
+      unawaited(_persistSmartQueueModel());
+    });
+  }
+
+  Future<void> _persistSmartQueueModel() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final payload = <String, dynamic>{
+        'weights': _smartQueueWeights,
+        'artistAffinity': _smartQueueArtistAffinity,
+        'sourceAffinity': _smartQueueSourceAffinity,
+      };
+      await prefs.setString(_smartQueueModelKey, jsonEncode(payload));
+    } catch (e) {
+      _log.w('Failed to save smart queue model: $e');
+    }
+  }
+
   PlaybackItem _buildQueueItemFromTrack(Track track) {
     final localState = ref.read(localLibraryProvider);
     final isLocalSource = (track.source ?? '').toLowerCase() == 'local';
@@ -978,6 +1106,7 @@ class PlaybackController extends Notifier<PlaybackState> {
     );
 
     if (!preserveQueue) {
+      _resetSmartQueueSessionState(clearRecent: true);
       _pendingResumePosition = null;
       _pendingResumeIndex = null;
       state = state.copyWith(queue: [resolvingItem], currentIndex: 0);
@@ -1223,6 +1352,7 @@ class PlaybackController extends Notifier<PlaybackState> {
   }) async {
     final requestEpoch = _startNewPlayRequest();
     _resetPrefetchCycleState();
+    _resetSmartQueueSessionState(clearRecent: true);
     _pendingResumePosition = null;
     _pendingResumeIndex = null;
     final uri = _uriFromPath(path);
@@ -1267,6 +1397,7 @@ class PlaybackController extends Notifier<PlaybackState> {
   Future<void> playTrackList(List<Track> tracks, {int startIndex = 0}) async {
     if (tracks.isEmpty) return;
     _resetPrefetchCycleState();
+    _resetSmartQueueSessionState(clearRecent: true);
 
     final items = tracks.map(_buildQueueItemFromTrack).toList(growable: false);
     _pendingResumePosition = null;
@@ -1294,6 +1425,7 @@ class PlaybackController extends Notifier<PlaybackState> {
     List<Track> albumTracks,
   ) async {
     _resetPrefetchCycleState();
+    _resetSmartQueueSessionState(clearRecent: true);
     final items = albumTracks
         .map(_buildQueueItemFromTrack)
         .toList(growable: false);
@@ -1349,6 +1481,7 @@ class PlaybackController extends Notifier<PlaybackState> {
   // ─── Public: clear queue ─────────────────────────────────────────────────
   void clearQueue() {
     _resetPrefetchCycleState();
+    _resetSmartQueueSessionState(clearRecent: false);
     _lastProgressSnapshotMs = -1;
     state = state.copyWith(queue: [], currentIndex: -1);
     unawaited(_savePlaybackSnapshot());
@@ -1367,6 +1500,7 @@ class PlaybackController extends Notifier<PlaybackState> {
 
   // ─── Public: skip next / previous ────────────────────────────────────────
   Future<void> skipNext() async {
+    _learnFromCurrentTrackOutcome(completedNaturally: false);
     final nextIndex = _resolveNextIndex();
     if (nextIndex != null) {
       await _playQueueIndex(nextIndex);
@@ -1506,10 +1640,16 @@ class PlaybackController extends Notifier<PlaybackState> {
   Future<void> _playQueueIndex(int index) async {
     if (index < 0 || index >= state.queue.length) return;
 
+    final previousItem = state.currentItem;
     final requestEpoch = _startNewPlayRequest();
     _resetPrefetchCycleState();
     final pendingResumePosition = _pendingResumePositionForIndex(index);
     final item = state.queue[index];
+    if (previousItem != null &&
+        _trackKeyFromPlaybackItem(previousItem) !=
+            _trackKeyFromPlaybackItem(item)) {
+      _rememberRecentPlayed(previousItem);
+    }
     _clearLyricsForTrackChange(upcomingItem: item);
     state = state.copyWith(
       currentIndex: index,
@@ -1867,6 +2007,1089 @@ class PlaybackController extends Notifier<PlaybackState> {
         .replaceAll(RegExp(r'<\d{2}:\d{2}\.\d{2,3}>'), '')
         .replaceAll(RegExp(r'\[bg:.*?\]'), '')
         .trim();
+  }
+
+  void _resetSmartQueueSessionState({required bool clearRecent}) {
+    _smartQueueRefillInFlight = false;
+    _lastSmartQueueRefillAt = null;
+    _smartQueueAutoAddedCount = 0;
+    _smartQueuePendingFeedbackByTrack.clear();
+    _smartQueueSearchCache.clear();
+    _smartQueueRelatedArtistsCache.clear();
+    if (clearRecent) {
+      _recentPlayedTrackKeys.clear();
+    }
+  }
+
+  bool _isSmartQueueEnabled() {
+    final settings = ref.read(settingsProvider);
+    if (!settings.smartQueueEnabled) return false;
+    if (!settings.isStreamingMode) return false;
+    if (state.repeatMode == RepeatMode.all ||
+        state.repeatMode == RepeatMode.one) {
+      return false;
+    }
+    if (state.isLoading || state.currentIndex < 0 || state.queue.isEmpty) {
+      return false;
+    }
+    if (state.currentItem?.track == null) return false;
+    if (_smartQueueAutoAddedCount >= _smartQueueMaxAutoAddsPerSession) {
+      return false;
+    }
+    return true;
+  }
+
+  String _normalizeSmartQueueKey(String value) => value.trim().toLowerCase();
+
+  String _trackKeyFromTrack(Track track) {
+    final isrc = _normalizeSmartQueueKey(track.isrc ?? '');
+    if (isrc.isNotEmpty) return 'isrc:$isrc';
+
+    final source = _normalizeSmartQueueKey(track.source ?? '');
+    final id = _normalizeSmartQueueKey(track.id);
+    if (source.isNotEmpty && id.isNotEmpty) return 'src:$source:$id';
+    if (id.isNotEmpty) return 'id:$id';
+
+    final title = _normalizeSmartQueueKey(track.name);
+    final artist = _normalizeSmartQueueKey(track.artistName);
+    if (title.isNotEmpty || artist.isNotEmpty) {
+      return 'name:$title|$artist';
+    }
+    return '';
+  }
+
+  String _trackKeyFromPlaybackItem(PlaybackItem item) {
+    final fromTrack = item.track;
+    if (fromTrack != null) {
+      final key = _trackKeyFromTrack(fromTrack);
+      if (key.isNotEmpty) return key;
+    }
+
+    final id = _normalizeSmartQueueKey(item.id);
+    if (id.isNotEmpty) return 'id:$id';
+
+    final title = _normalizeSmartQueueKey(item.title);
+    final artist = _normalizeSmartQueueKey(item.artist);
+    if (title.isNotEmpty || artist.isNotEmpty) {
+      return 'name:$title|$artist';
+    }
+    return '';
+  }
+
+  void _rememberRecentPlayed(PlaybackItem item) {
+    final key = _trackKeyFromPlaybackItem(item);
+    if (key.isEmpty) return;
+    _recentPlayedTrackKeys.remove(key);
+    _recentPlayedTrackKeys.insert(0, key);
+    if (_recentPlayedTrackKeys.length > _smartQueueRecentPlayedWindow) {
+      _recentPlayedTrackKeys.removeRange(
+        _smartQueueRecentPlayedWindow,
+        _recentPlayedTrackKeys.length,
+      );
+    }
+  }
+
+  void _learnFromCurrentTrackOutcome({required bool completedNaturally}) {
+    final current = state.currentItem;
+    if (current == null) return;
+    final key = _trackKeyFromPlaybackItem(current);
+    if (key.isEmpty) return;
+
+    final context = _smartQueuePendingFeedbackByTrack.remove(key);
+    if (context == null) return;
+    if (DateTime.now().difference(context.addedAt) >
+        _smartQueueFeedbackMaxAge) {
+      return;
+    }
+
+    final durationMs = max(
+      1,
+      state.duration.inMilliseconds > 0
+          ? state.duration.inMilliseconds
+          : current.durationMs,
+    );
+    final positionMs = state.position.inMilliseconds.clamp(0, durationMs);
+    final listenRatio = completedNaturally ? 1.0 : (positionMs / durationMs);
+    final reward = _smartQueueRewardFromListenRatio(
+      listenRatio: listenRatio,
+      completedNaturally: completedNaturally,
+    );
+    _updateSmartQueueModel(
+      features: context.features,
+      reward: reward,
+      track: current.track,
+    );
+  }
+
+  double _smartQueueRewardFromListenRatio({
+    required double listenRatio,
+    required bool completedNaturally,
+  }) {
+    if (completedNaturally || listenRatio >= 0.98) return 1.0;
+    if (listenRatio >= 0.75) return 0.85;
+    if (listenRatio >= 0.50) return 0.65;
+    if (listenRatio >= 0.25) return 0.35;
+    if (listenRatio >= 0.12) return 0.15;
+    return 0.0;
+  }
+
+  void _updateAffinity(Map<String, double> map, String key, double reward) {
+    final normalizedKey = _normalizeSmartQueueKey(key);
+    if (normalizedKey.isEmpty) return;
+
+    final current = map[normalizedKey] ?? 0.0;
+    final target = (reward * 2.0) - 1.0; // [0,1] -> [-1,1]
+    final updated = (current * 0.85) + (target * 0.15);
+    map[normalizedKey] = updated.clamp(-1.0, 1.0);
+
+    while (map.length > _smartQueueMaxAffinityKeys) {
+      map.remove(map.keys.first);
+    }
+  }
+
+  void _updateSmartQueueModel({
+    required Map<String, double> features,
+    required double reward,
+    Track? track,
+  }) {
+    final clippedReward = reward.clamp(0.0, 1.0);
+    final prediction = _smartQueuePredict(features);
+    final error = clippedReward - prediction;
+
+    final nextBias =
+        (_smartQueueWeights['bias'] ?? 0.0) + (_smartQueueLearningRate * error);
+    _smartQueueWeights['bias'] = nextBias.clamp(-3.0, 3.0);
+
+    for (final entry in features.entries) {
+      final currentWeight = _smartQueueWeights[entry.key] ?? 0.0;
+      final updatedWeight =
+          currentWeight + (_smartQueueLearningRate * error * entry.value);
+      _smartQueueWeights[entry.key] = updatedWeight.clamp(-3.0, 3.0);
+    }
+
+    if (track != null) {
+      _updateAffinity(
+        _smartQueueArtistAffinity,
+        track.artistName,
+        clippedReward,
+      );
+      _updateAffinity(
+        _smartQueueSourceAffinity,
+        _sourceKey(track.source ?? ''),
+        clippedReward,
+      );
+    }
+
+    _scheduleSmartQueueModelSave();
+  }
+
+  double _smartQueuePredict(Map<String, double> features) {
+    var logit = _smartQueueWeights['bias'] ?? 0.0;
+    for (final entry in features.entries) {
+      logit += (_smartQueueWeights[entry.key] ?? 0.0) * entry.value;
+    }
+    return _sigmoid(logit);
+  }
+
+  double _sigmoid(double x) => 1.0 / (1.0 + exp(-x));
+
+  void _maybeTriggerSmartQueueRefill(Duration position) {
+    if (!_isSmartQueueEnabled()) return;
+    if (_smartQueueRefillInFlight) return;
+
+    final remaining = state.queue.length - state.currentIndex - 1;
+    if (remaining > _smartQueueTriggerRemainingTracks) return;
+    if (position < const Duration(seconds: 8)) return;
+
+    final lastRefill = _lastSmartQueueRefillAt;
+    if (lastRefill != null &&
+        DateTime.now().difference(lastRefill) < _smartQueueRefillCooldown) {
+      return;
+    }
+
+    unawaited(_autoRefillSmartQueue(force: false));
+  }
+
+  Future<int> _autoRefillSmartQueue({required bool force}) async {
+    if (!_isSmartQueueEnabled()) return 0;
+    if (_smartQueueRefillInFlight) return 0;
+
+    final remaining = max(0, state.queue.length - state.currentIndex - 1);
+    final needed = _smartQueueTargetRemainingTracks - remaining;
+    if (!force && needed <= 0) return 0;
+
+    final lastRefill = _lastSmartQueueRefillAt;
+    if (!force &&
+        lastRefill != null &&
+        DateTime.now().difference(lastRefill) < _smartQueueRefillCooldown) {
+      return 0;
+    }
+
+    final seed = state.currentItem?.track;
+    if (seed == null) return 0;
+
+    final epoch = _playRequestEpoch;
+    _smartQueueRefillInFlight = true;
+    try {
+      _pruneSmartQueueCaches();
+
+      final candidates = await _fetchSmartQueueCandidates(
+        seed,
+        limit: _smartQueueCandidatePoolLimit,
+      );
+      if (_playRequestEpoch != epoch) return 0;
+      if (candidates.isEmpty) return 0;
+
+      final existingTrackKeys = <String>{};
+      for (final item in state.queue) {
+        final key = _trackKeyFromPlaybackItem(item);
+        if (key.isNotEmpty) existingTrackKeys.add(key);
+      }
+      existingTrackKeys.addAll(_recentPlayedTrackKeys);
+
+      final scored = <_SmartQueueCandidate>[];
+      for (final candidate in candidates) {
+        final candidateEntry = _buildSmartQueueCandidate(
+          seed: seed,
+          candidate: candidate,
+          existingTrackKeys: existingTrackKeys,
+        );
+        if (candidateEntry == null) continue;
+        scored.add(candidateEntry);
+      }
+      if (scored.isEmpty) return 0;
+
+      scored.sort((a, b) => b.score.compareTo(a.score));
+      final targetCount = force ? max(1, needed) : max(0, needed);
+      if (targetCount <= 0) return 0;
+      final selected = _selectSmartQueueCandidates(
+        scored: scored,
+        targetCount: targetCount,
+      );
+      if (selected.isEmpty) return 0;
+      if (_playRequestEpoch != epoch) return 0;
+
+      final queueBefore = state.queue.length;
+      final updatedQueue = [...state.queue];
+      for (final selection in selected) {
+        final item = _buildQueueItemFromTrack(selection.track);
+        updatedQueue.add(item);
+        final itemKey = _trackKeyFromPlaybackItem(item);
+        if (itemKey.isNotEmpty) {
+          _smartQueuePendingFeedbackByTrack[itemKey] =
+              _SmartQueueLearningContext(
+                features: selection.features,
+                addedAt: DateTime.now(),
+              );
+        }
+      }
+
+      state = state.copyWith(queue: updatedQueue);
+      if (state.shuffle) {
+        for (var idx = queueBefore; idx < updatedQueue.length; idx++) {
+          _shuffleOrder.add(idx);
+        }
+      }
+
+      _smartQueueAutoAddedCount += selected.length;
+      _lastSmartQueueRefillAt = DateTime.now();
+      unawaited(_savePlaybackSnapshot());
+      final sourceSummary = <String, int>{};
+      for (final selection in selected) {
+        final source = _resolveSmartQueueSourceLabel(selection.track);
+        sourceSummary[source] = (sourceSummary[source] ?? 0) + 1;
+      }
+      final summaryText = sourceSummary.entries
+          .map((entry) => '${entry.key}:${entry.value}')
+          .join(', ');
+      _log.d(
+        'Smart queue appended ${selected.length} tracks (remaining=$remaining, sources=[$summaryText])',
+      );
+      return selected.length;
+    } catch (e) {
+      _log.d('Smart queue refill skipped: $e');
+      return 0;
+    } finally {
+      _smartQueueRefillInFlight = false;
+    }
+  }
+
+  Future<List<Track>> _fetchSmartQueueCandidates(
+    Track seed, {
+    required int limit,
+  }) async {
+    final queries = <String>{
+      '${seed.artistName} ${seed.name}'.trim(),
+      seed.artistName.trim(),
+      '${seed.artistName} ${seed.albumName}'.trim(),
+    }.where((q) => q.isNotEmpty).take(3).toList(growable: false);
+
+    if (queries.isEmpty) return const <Track>[];
+
+    final perQueryLimit = max(10, (limit / queries.length).ceil() + 4);
+    final results = await Future.wait(
+      queries.map(
+        (q) => _searchTracksForSmartQueue(q, trackLimit: perQueryLimit),
+      ),
+    );
+
+    final merged = <Track>[];
+    for (final list in results) {
+      merged.addAll(list);
+      if (merged.length >= limit * 2) break;
+    }
+
+    final relatedArtistTracks = await _fetchRelatedArtistTracksForSmartQueue(
+      seed,
+      fallbackTracks: merged,
+      limit: limit,
+    );
+    if (relatedArtistTracks.isNotEmpty) {
+      merged.addAll(relatedArtistTracks);
+    }
+    return merged;
+  }
+
+  Future<List<Track>> _fetchRelatedArtistTracksForSmartQueue(
+    Track seed, {
+    required List<Track> fallbackTracks,
+    required int limit,
+  }) async {
+    final seedArtist = _normalizeSmartQueueKey(seed.artistName);
+    if (seedArtist.isEmpty) return const [];
+
+    final relatedArtists = await _discoverRelatedArtistsForSmartQueue(
+      seed,
+      fallbackTracks: fallbackTracks,
+      limit: _smartQueueRelatedArtistsLimit,
+    );
+    if (relatedArtists.isEmpty) return const [];
+
+    final perArtistLimit = max(
+      6,
+      (limit / max(1, relatedArtists.length)).ceil(),
+    );
+    final results = await Future.wait(
+      relatedArtists.map(
+        (artist) =>
+            _searchTracksForSmartQueue(artist.name, trackLimit: perArtistLimit),
+      ),
+    );
+
+    final merged = <Track>[];
+    for (final tracks in results) {
+      for (final track in tracks) {
+        final artist = _normalizeSmartQueueKey(track.artistName);
+        if (artist.isEmpty || artist == seedArtist) continue;
+        merged.add(track);
+      }
+      if (merged.length >= limit) break;
+    }
+    return merged;
+  }
+
+  Future<List<_SmartQueueRelatedArtist>> _discoverRelatedArtistsForSmartQueue(
+    Track seed, {
+    required List<Track> fallbackTracks,
+    required int limit,
+  }) async {
+    final seedArtist = _normalizeSmartQueueKey(seed.artistName);
+    if (seedArtist.isEmpty || limit <= 0) return const [];
+
+    final cacheKey = 'seed:$seedArtist';
+    final cached = _smartQueueRelatedArtistsCache[cacheKey];
+    final now = DateTime.now();
+    if (cached != null &&
+        now.difference(cached.fetchedAt) < _smartQueueSearchCacheTtl) {
+      return cached.artists.take(limit).toList(growable: false);
+    }
+
+    final relatedByName = <String, _SmartQueueRelatedArtist>{};
+    void addCandidate(_SmartQueueRelatedArtist candidate) {
+      final key = _normalizeSmartQueueKey(candidate.name);
+      if (key.isEmpty || key == seedArtist) return;
+      final existing = relatedByName[key];
+      if (existing == null || candidate.score > existing.score) {
+        relatedByName[key] = candidate;
+      }
+    }
+
+    final spotifySeed = await _findArtistSeedBySearch(
+      queryArtistName: seed.artistName,
+      provider: 'spotify',
+    );
+    if (spotifySeed != null) {
+      final related = await _fetchRelatedArtistsFromProviderSeed(spotifySeed);
+      for (final item in related) {
+        addCandidate(item);
+      }
+    }
+
+    final deezerSeed = await _findArtistSeedBySearch(
+      queryArtistName: seed.artistName,
+      provider: 'deezer',
+    );
+    if (deezerSeed != null) {
+      final related = await _fetchRelatedArtistsFromProviderSeed(deezerSeed);
+      for (final item in related) {
+        addCandidate(item);
+      }
+    }
+
+    // Fallback heuristic from current track candidates if provider APIs don't return enough.
+    if (relatedByName.length < limit) {
+      final counts = <String, int>{};
+      for (final track in fallbackTracks.take(80)) {
+        final artistName = track.artistName.trim();
+        final key = _normalizeSmartQueueKey(artistName);
+        if (key.isEmpty || key == seedArtist) continue;
+        counts[key] = (counts[key] ?? 0) + 1;
+      }
+      for (final entry in counts.entries) {
+        addCandidate(
+          _SmartQueueRelatedArtist(
+            name: entry.key,
+            provider: 'fallback',
+            score: min(1.0, 0.25 + (entry.value * 0.14)),
+          ),
+        );
+      }
+    }
+
+    final sorted = relatedByName.values.toList()
+      ..sort((a, b) => b.score.compareTo(a.score));
+    _smartQueueRelatedArtistsCache[cacheKey] = _SmartQueueRelatedArtistsCache(
+      artists: sorted,
+      fetchedAt: now,
+    );
+    return sorted.take(limit).toList(growable: false);
+  }
+
+  Future<_SmartQueueArtistSeed?> _findArtistSeedBySearch({
+    required String queryArtistName,
+    required String provider,
+  }) async {
+    final normalizedProvider = provider.trim().toLowerCase();
+    final query = queryArtistName.trim();
+    if (query.isEmpty) return null;
+
+    final artists = await _searchArtistsForSmartQueue(
+      query: query,
+      provider: normalizedProvider,
+      limit: 8,
+    );
+    if (artists.isEmpty) return null;
+
+    artists.sort((a, b) => b.score.compareTo(a.score));
+    return artists.first;
+  }
+
+  Future<List<_SmartQueueRelatedArtist>> _fetchRelatedArtistsFromProviderSeed(
+    _SmartQueueArtistSeed seed,
+  ) async {
+    try {
+      if (seed.provider == 'spotify') {
+        return await _fetchSpotifyRelatedArtistsForSmartQueue(seed);
+      } else if (seed.provider == 'deezer') {
+        final response = await PlatformBridge.getDeezerRelatedArtists(
+          seed.id,
+          limit: 10,
+        );
+        final rawList = response['artists'] as List<dynamic>? ?? const [];
+        final result = <_SmartQueueRelatedArtist>[];
+        for (final entry in rawList) {
+          if (entry is! Map) continue;
+          final map = Map<String, dynamic>.from(entry);
+          final name = (map['name'] as String?)?.trim() ?? '';
+          if (name.isEmpty) continue;
+          final popularity = (map['popularity'] as num?)?.toDouble() ?? 0.0;
+          final followers = (map['followers'] as num?)?.toDouble() ?? 0.0;
+          final score =
+              ((popularity / 100.0) * 0.65) +
+              (min(followers, 2000000) / 2000000.0) * 0.35;
+          result.add(
+            _SmartQueueRelatedArtist(
+              name: name,
+              provider: seed.provider,
+              score: score.clamp(0.05, 1.0),
+            ),
+          );
+        }
+        return result;
+      }
+      return const [];
+    } catch (_) {
+      return const [];
+    }
+  }
+
+  Future<List<_SmartQueueRelatedArtist>>
+  _fetchSpotifyRelatedArtistsForSmartQueue(_SmartQueueArtistSeed seed) async {
+    final seedArtistKey = _normalizeSmartQueueKey(seed.name);
+    if (seedArtistKey.isEmpty) return const [];
+
+    final relatedScores = <String, double>{};
+    final relatedNames = <String, String>{};
+
+    void addRelatedName(String rawName, double score) {
+      final name = rawName.trim();
+      final key = _normalizeSmartQueueKey(name);
+      if (key.isEmpty || key == seedArtistKey || score <= 0) return;
+      relatedNames[key] = name;
+      relatedScores[key] = (relatedScores[key] ?? 0.0) + score;
+    }
+
+    try {
+      final artist = await PlatformBridge.getArtistWithExtension(
+        _smartQueueSpotifyExtensionId,
+        seed.id,
+      );
+      if (artist != null) {
+        final topTracks = artist['top_tracks'] as List<dynamic>? ?? const [];
+        for (var index = 0; index < topTracks.length && index < 20; index++) {
+          final entry = topTracks[index];
+          if (entry is! Map) continue;
+          final map = Map<String, dynamic>.from(entry);
+          final artistsText = (map['artists'] ?? map['artist'] ?? '')
+              .toString()
+              .trim();
+          if (artistsText.isEmpty) continue;
+          final rankWeight = (1.0 - (index / 18.0)).clamp(0.18, 1.0);
+          for (final artistName in _extractArtistNamesForSmartQueue(
+            artistsText,
+          )) {
+            addRelatedName(artistName, 0.42 * rankWeight);
+          }
+        }
+      }
+    } catch (_) {}
+
+    try {
+      final searchResults = await PlatformBridge.customSearchWithExtension(
+        _smartQueueSpotifyExtensionId,
+        seed.name,
+        options: <String, dynamic>{
+          'filter': 'artists',
+          'limit': 12,
+          'offset': 0,
+        },
+      );
+      for (var index = 0; index < searchResults.length; index++) {
+        final map = searchResults[index];
+        final itemType = (map['item_type'] ?? '').toString().toLowerCase();
+        if (itemType.isNotEmpty && itemType != 'artist') continue;
+        final id = (map['id'] ?? '').toString().trim();
+        final name = (map['name'] ?? '').toString().trim();
+        if (name.isEmpty) continue;
+        final normalizedName = _normalizeSmartQueueKey(name);
+        if (normalizedName == seedArtistKey || id == seed.id) continue;
+
+        final similarity = _artistNameSimilarity(seed.name, name);
+        final rankWeight = (1.0 - (index / 12.0)).clamp(0.1, 1.0);
+        addRelatedName(name, (rankWeight * 0.24) + (similarity * 0.12));
+      }
+    } catch (_) {}
+
+    if (relatedScores.isEmpty) return const [];
+
+    final related = <_SmartQueueRelatedArtist>[];
+    for (final entry in relatedScores.entries) {
+      related.add(
+        _SmartQueueRelatedArtist(
+          name: relatedNames[entry.key] ?? entry.key,
+          provider: _smartQueueSpotifyExtensionId,
+          score: entry.value.clamp(0.05, 1.0),
+        ),
+      );
+    }
+    related.sort((a, b) => b.score.compareTo(a.score));
+    return related.take(10).toList(growable: false);
+  }
+
+  List<String> _extractArtistNamesForSmartQueue(String rawArtists) {
+    final raw = rawArtists.trim();
+    if (raw.isEmpty) return const [];
+
+    final tokens = raw.split(
+      RegExp(
+        r'\s*(?:,|&|\bx\b|feat\.?|featuring|ft\.?|with)\s*',
+        caseSensitive: false,
+      ),
+    );
+    final names = <String>[];
+    final seen = <String>{};
+    for (final token in tokens) {
+      final name = token.trim();
+      if (name.isEmpty) continue;
+      final key = _normalizeSmartQueueKey(name);
+      if (key.isEmpty || !seen.add(key)) continue;
+      names.add(name);
+    }
+    return names;
+  }
+
+  Future<List<_SmartQueueArtistSeed>> _searchArtistsForSmartQueue({
+    required String query,
+    required String provider,
+    int limit = 8,
+  }) async {
+    final normalizedQuery = query.trim();
+    if (normalizedQuery.isEmpty) return const [];
+
+    final normalizedProvider = provider.trim().toLowerCase();
+    if (normalizedProvider != 'spotify' && normalizedProvider != 'deezer') {
+      return const [];
+    }
+
+    try {
+      final List<Map<String, dynamic>> artistsRaw;
+      if (normalizedProvider == 'spotify') {
+        final response = await PlatformBridge.customSearchWithExtension(
+          _smartQueueSpotifyExtensionId,
+          normalizedQuery,
+          options: <String, dynamic>{
+            'filter': 'artists',
+            'limit': min(30, max(4, limit)),
+            'offset': 0,
+          },
+        );
+        artistsRaw = response
+            .where(
+              (item) =>
+                  (item['item_type'] ?? 'artist').toString().toLowerCase() ==
+                  'artist',
+            )
+            .toList(growable: false);
+      } else {
+        final result = await PlatformBridge.searchDeezerAll(
+          normalizedQuery,
+          trackLimit: 1,
+          artistLimit: limit,
+          filter: 'artist',
+        );
+        final raw = result['artists'] as List<dynamic>? ?? const [];
+        artistsRaw = raw
+            .whereType<Map>()
+            .map((entry) => Map<String, dynamic>.from(entry))
+            .toList(growable: false);
+      }
+
+      final seeds = <_SmartQueueArtistSeed>[];
+      final seen = <String>{};
+      for (var index = 0; index < artistsRaw.length; index++) {
+        final map = artistsRaw[index];
+        final id = (map['id'] ?? '').toString().trim();
+        final name = (map['name'] ?? '').toString().trim();
+        if (id.isEmpty || name.isEmpty) continue;
+        final key = '$normalizedProvider:${_normalizeSmartQueueKey(id)}';
+        if (!seen.add(key)) continue;
+
+        final popularity = (map['popularity'] as num?)?.toDouble() ?? 0.0;
+        final similarity = _artistNameSimilarity(query, name);
+        final rankScore = (1.0 - (index / max(1, artistsRaw.length))).clamp(
+          0.05,
+          1.0,
+        );
+        final score = normalizedProvider == 'spotify'
+            ? (similarity * 0.82) + (rankScore * 0.18)
+            : (similarity * 0.72) + ((popularity / 100.0) * 0.28);
+        seeds.add(
+          _SmartQueueArtistSeed(
+            id: id,
+            name: name,
+            provider: normalizedProvider,
+            score: score.clamp(0.0, 1.0),
+          ),
+        );
+      }
+      return seeds;
+    } catch (_) {
+      return const [];
+    }
+  }
+
+  double _artistNameSimilarity(String a, String b) {
+    final na = _normalizeSmartQueueKey(a);
+    final nb = _normalizeSmartQueueKey(b);
+    if (na.isEmpty || nb.isEmpty) return 0.0;
+    if (na == nb) return 1.0;
+    if (na.contains(nb) || nb.contains(na)) return 0.88;
+
+    final tokensA = na
+        .split(RegExp(r'[^a-z0-9]+'))
+        .where((t) => t.isNotEmpty)
+        .toSet();
+    final tokensB = nb
+        .split(RegExp(r'[^a-z0-9]+'))
+        .where((t) => t.isNotEmpty)
+        .toSet();
+    if (tokensA.isEmpty || tokensB.isEmpty) return 0.0;
+
+    final intersection = tokensA.intersection(tokensB).length;
+    final union = tokensA.union(tokensB).length;
+    if (union == 0) return 0.0;
+    return intersection / union;
+  }
+
+  Future<List<Track>> _searchTracksForSmartQueue(
+    String query, {
+    int trackLimit = 20,
+  }) async {
+    final normalizedQuery = _normalizeSmartQueueKey(query);
+    if (normalizedQuery.isEmpty) return const <Track>[];
+
+    final now = DateTime.now();
+    final cached = _smartQueueSearchCache[normalizedQuery];
+    if (cached != null &&
+        now.difference(cached.fetchedAt) < _smartQueueSearchCacheTtl) {
+      return cached.tracks;
+    }
+
+    final settings = ref.read(settingsProvider);
+    final preferSpotify =
+        settings.metadataSource.trim().toLowerCase() == 'spotify';
+    final searchCalls = preferSpotify
+        ? <Future<List<Map<String, dynamic>>> Function()>[
+            () => _searchSpotifyTracksForSmartQueue(
+              normalizedQuery,
+              trackLimit: trackLimit,
+            ),
+            () => _searchDeezerTracksForSmartQueue(
+              normalizedQuery,
+              trackLimit: trackLimit,
+            ),
+          ]
+        : <Future<List<Map<String, dynamic>>> Function()>[
+            () => _searchDeezerTracksForSmartQueue(
+              normalizedQuery,
+              trackLimit: trackLimit,
+            ),
+            () => _searchSpotifyTracksForSmartQueue(
+              normalizedQuery,
+              trackLimit: trackLimit,
+            ),
+          ];
+
+    final parsedTracks = <Track>[];
+    for (final call in searchCalls) {
+      try {
+        final list = await call();
+        for (final entry in list) {
+          final track = _parseSearchTrackForSmartQueue(entry);
+          if (track.id.trim().isEmpty || track.name.trim().isEmpty) continue;
+          if (track.isCollection) continue;
+          parsedTracks.add(track);
+        }
+        if (parsedTracks.isNotEmpty) break;
+      } catch (_) {
+        continue;
+      }
+    }
+
+    _smartQueueSearchCache[normalizedQuery] = _SmartQueueCachedResult(
+      tracks: parsedTracks,
+      fetchedAt: now,
+    );
+    return parsedTracks;
+  }
+
+  Future<List<Map<String, dynamic>>> _searchSpotifyTracksForSmartQueue(
+    String query, {
+    required int trackLimit,
+  }) async {
+    final response = await PlatformBridge.customSearchWithExtension(
+      _smartQueueSpotifyExtensionId,
+      query,
+      options: <String, dynamic>{
+        'filter': 'tracks',
+        'limit': min(50, max(1, trackLimit)),
+        'offset': 0,
+      },
+    );
+    return response
+        .where(
+          (item) =>
+              (item['item_type'] ?? 'track').toString().toLowerCase() ==
+              'track',
+        )
+        .toList(growable: false);
+  }
+
+  Future<List<Map<String, dynamic>>> _searchDeezerTracksForSmartQueue(
+    String query, {
+    required int trackLimit,
+  }) async {
+    final result = await PlatformBridge.searchDeezerAll(
+      query,
+      trackLimit: trackLimit,
+      artistLimit: 0,
+      filter: 'track',
+    );
+    final tracks = result['tracks'] as List<dynamic>? ?? const [];
+    return tracks
+        .whereType<Map>()
+        .map((entry) {
+          final map = Map<String, dynamic>.from(entry);
+          map.putIfAbsent('provider_id', () => 'deezer');
+          map.putIfAbsent('source', () => 'deezer');
+          return map;
+        })
+        .toList(growable: false);
+  }
+
+  String _resolveSmartQueueSourceLabel(Track track) {
+    final raw = (track.source ?? '').trim().toLowerCase();
+    if (raw.isNotEmpty) return raw;
+    final id = track.id.trim().toLowerCase();
+    if (id.startsWith('deezer:')) return 'deezer';
+    if (id.startsWith('spotify:')) return 'spotify';
+    return 'unknown';
+  }
+
+  Track _parseSearchTrackForSmartQueue(
+    Map<String, dynamic> data, {
+    String? source,
+  }) {
+    final durationMs = _extractDurationMsForSmartQueue(data);
+    final itemType = data['item_type']?.toString();
+    return Track(
+      id: (data['spotify_id'] ?? data['id'] ?? '').toString(),
+      name: (data['name'] ?? '').toString(),
+      artistName: (data['artists'] ?? data['artist'] ?? '').toString(),
+      albumName: (data['album_name'] ?? data['album'] ?? '').toString(),
+      albumArtist: data['album_artist']?.toString(),
+      coverUrl: (data['cover_url'] ?? data['images'])?.toString(),
+      isrc: data['isrc']?.toString(),
+      duration: (durationMs / 1000).round(),
+      trackNumber: data['track_number'] as int?,
+      discNumber: data['disc_number'] as int?,
+      releaseDate: data['release_date']?.toString(),
+      source:
+          source ??
+          data['source']?.toString() ??
+          data['provider_id']?.toString(),
+      albumType: data['album_type']?.toString(),
+      itemType: itemType,
+      deezerId: data['deezer_id']?.toString(),
+    );
+  }
+
+  int _extractDurationMsForSmartQueue(Map<String, dynamic> data) {
+    final durationMsRaw = data['duration_ms'];
+    if (durationMsRaw is num && durationMsRaw > 0) {
+      return durationMsRaw.toInt();
+    }
+    if (durationMsRaw is String) {
+      final parsed = num.tryParse(durationMsRaw.trim());
+      if (parsed != null && parsed > 0) {
+        return parsed.toInt();
+      }
+    }
+
+    final durationSecRaw = data['duration'];
+    if (durationSecRaw is num && durationSecRaw > 0) {
+      return (durationSecRaw * 1000).toInt();
+    }
+    if (durationSecRaw is String) {
+      final parsed = num.tryParse(durationSecRaw.trim());
+      if (parsed != null && parsed > 0) {
+        return (parsed * 1000).toInt();
+      }
+    }
+    return 0;
+  }
+
+  _SmartQueueCandidate? _buildSmartQueueCandidate({
+    required Track seed,
+    required Track candidate,
+    required Set<String> existingTrackKeys,
+  }) {
+    final candidateKey = _trackKeyFromTrack(candidate);
+    if (candidateKey.isEmpty || existingTrackKeys.contains(candidateKey)) {
+      return null;
+    }
+
+    final features = _buildSmartQueueFeatures(
+      seed: seed,
+      candidate: candidate,
+      existingTrackKeys: existingTrackKeys,
+    );
+    final prediction = _smartQueuePredict(features);
+    final exploration = _smartQueueRandom.nextDouble() * 0.06;
+    final score = prediction + exploration;
+    return _SmartQueueCandidate(
+      track: candidate,
+      key: candidateKey,
+      features: features,
+      score: score,
+    );
+  }
+
+  Map<String, double> _buildSmartQueueFeatures({
+    required Track seed,
+    required Track candidate,
+    required Set<String> existingTrackKeys,
+  }) {
+    final sameArtist =
+        _normalizeSmartQueueKey(seed.artistName) ==
+            _normalizeSmartQueueKey(candidate.artistName)
+        ? 1.0
+        : 0.0;
+    final sameAlbum =
+        _normalizeSmartQueueKey(seed.albumName) ==
+            _normalizeSmartQueueKey(candidate.albumName)
+        ? 1.0
+        : 0.0;
+    final durationSimilarity = _durationSimilarity(
+      seed.duration,
+      candidate.duration,
+    );
+    final sourceMatch =
+        _sourceKey(seed.source ?? '') == _sourceKey(candidate.source ?? '')
+        ? 1.0
+        : 0.0;
+    final releaseYearSimilarity = _releaseYearSimilarity(
+      seed.releaseDate,
+      candidate.releaseDate,
+    );
+    final artistAffinityRaw =
+        _smartQueueArtistAffinity[_normalizeSmartQueueKey(
+          candidate.artistName,
+        )] ??
+        0.0;
+    final sourceAffinityRaw =
+        _smartQueueSourceAffinity[_sourceKey(candidate.source ?? '')] ?? 0.0;
+    final artistAffinity = ((artistAffinityRaw + 1.0) / 2.0).clamp(0.0, 1.0);
+    final sourceAffinity = ((sourceAffinityRaw + 1.0) / 2.0).clamp(0.0, 1.0);
+
+    var artistRepetition = 0;
+    final candidateArtist = _normalizeSmartQueueKey(candidate.artistName);
+    if (candidateArtist.isNotEmpty) {
+      for (final key in _recentPlayedTrackKeys.take(10)) {
+        if (key.contains('|$candidateArtist')) {
+          artistRepetition++;
+        }
+      }
+      for (final queueItem in state.queue.reversed.take(6)) {
+        final artist = _normalizeSmartQueueKey(queueItem.artist);
+        if (artist.isNotEmpty && artist == candidateArtist) {
+          artistRepetition++;
+        }
+      }
+    }
+    final novelty = (1.0 - (artistRepetition / 3.0)).clamp(0.15, 1.0);
+
+    final alreadySeen = existingTrackKeys.contains(
+      _trackKeyFromTrack(candidate),
+    );
+    final noveltyAfterDuplicateCheck = alreadySeen ? 0.0 : novelty;
+
+    return <String, double>{
+      'same_artist': sameArtist,
+      'same_album': sameAlbum,
+      'duration_similarity': durationSimilarity,
+      'source_match': sourceMatch,
+      'release_year_similarity': releaseYearSimilarity,
+      'artist_affinity': artistAffinity,
+      'source_affinity': sourceAffinity,
+      'novelty': noveltyAfterDuplicateCheck,
+    };
+  }
+
+  double _durationSimilarity(int aSec, int bSec) {
+    if (aSec <= 0 || bSec <= 0) return 0.5;
+    final maxSec = max(aSec, bSec).toDouble();
+    final diff = (aSec - bSec).abs().toDouble();
+    final normalized = (1.0 - (diff / maxSec)).clamp(0.0, 1.0);
+    return normalized;
+  }
+
+  double _releaseYearSimilarity(String? a, String? b) {
+    final yearA = _parseYear(a);
+    final yearB = _parseYear(b);
+    if (yearA == null || yearB == null) return 0.5;
+    final diff = (yearA - yearB).abs();
+    if (diff == 0) return 1.0;
+    if (diff <= 1) return 0.85;
+    if (diff <= 3) return 0.65;
+    if (diff <= 6) return 0.45;
+    return 0.2;
+  }
+
+  int? _parseYear(String? raw) {
+    if (raw == null || raw.trim().isEmpty) return null;
+    final match = RegExp(r'(\d{4})').firstMatch(raw);
+    if (match == null) return null;
+    return int.tryParse(match.group(1)!);
+  }
+
+  String _sourceKey(String sourceRaw) {
+    final normalized = _normalizeSmartQueueKey(sourceRaw);
+    if (normalized.isNotEmpty) return normalized;
+    return _resolveService(
+      ref.read(settingsProvider).defaultService,
+    ).toLowerCase();
+  }
+
+  List<_SmartQueueCandidate> _selectSmartQueueCandidates({
+    required List<_SmartQueueCandidate> scored,
+    required int targetCount,
+  }) {
+    if (targetCount <= 0 || scored.isEmpty) return const [];
+
+    final pool = scored.take(14).toList(growable: true);
+    final selected = <_SmartQueueCandidate>[];
+    final artistCounts = <String, int>{};
+    final selectedKeys = <String>{};
+
+    while (pool.isNotEmpty && selected.length < targetCount) {
+      final picked = _pickWeightedCandidate(pool);
+      pool.remove(picked);
+      if (selectedKeys.contains(picked.key)) {
+        continue;
+      }
+
+      final artistKey = _normalizeSmartQueueKey(picked.track.artistName);
+      final repeats = artistCounts[artistKey] ?? 0;
+      if (artistKey.isNotEmpty && repeats >= 2) {
+        continue;
+      }
+
+      selected.add(picked);
+      selectedKeys.add(picked.key);
+      if (artistKey.isNotEmpty) {
+        artistCounts[artistKey] = repeats + 1;
+      }
+    }
+    return selected;
+  }
+
+  _SmartQueueCandidate _pickWeightedCandidate(List<_SmartQueueCandidate> pool) {
+    if (pool.length == 1) return pool.first;
+
+    var total = 0.0;
+    for (final item in pool) {
+      total += max(0.0001, item.score);
+    }
+    var cursor = _smartQueueRandom.nextDouble() * total;
+    for (final item in pool) {
+      cursor -= max(0.0001, item.score);
+      if (cursor <= 0) return item;
+    }
+    return pool.last;
+  }
+
+  void _pruneSmartQueueCaches() {
+    final now = DateTime.now();
+    _smartQueueSearchCache.removeWhere(
+      (_, value) => now.difference(value.fetchedAt) > _smartQueueSearchCacheTtl,
+    );
+    _smartQueueRelatedArtistsCache.removeWhere(
+      (_, value) => now.difference(value.fetchedAt) > _smartQueueSearchCacheTtl,
+    );
+    _smartQueuePendingFeedbackByTrack.removeWhere(
+      (_, value) => now.difference(value.addedAt) > _smartQueueFeedbackMaxAge,
+    );
   }
 
   Uri _uriFromPath(String path) {
@@ -2305,7 +3528,9 @@ class PlaybackController extends Notifier<PlaybackState> {
     _appLifecycleListener?.dispose();
     _appLifecycleListener = null;
     _snapshotSaveTimer?.cancel();
+    _smartQueueModelSaveTimer?.cancel();
     unawaited(_savePlaybackSnapshot());
+    unawaited(_persistSmartQueueModel());
     unawaited(FFmpegService.stopLiveDecryptedStream());
     unawaited(FFmpegService.stopNativeDashManifestPlayback());
     for (final sub in _subscriptions) {
@@ -2313,6 +3538,76 @@ class PlaybackController extends Notifier<PlaybackState> {
     }
     _player.dispose();
   }
+}
+
+class _SmartQueueLearningContext {
+  final Map<String, double> features;
+  final DateTime addedAt;
+
+  const _SmartQueueLearningContext({
+    required this.features,
+    required this.addedAt,
+  });
+}
+
+class _SmartQueueCachedResult {
+  final List<Track> tracks;
+  final DateTime fetchedAt;
+
+  const _SmartQueueCachedResult({
+    required this.tracks,
+    required this.fetchedAt,
+  });
+}
+
+class _SmartQueueRelatedArtistsCache {
+  final List<_SmartQueueRelatedArtist> artists;
+  final DateTime fetchedAt;
+
+  const _SmartQueueRelatedArtistsCache({
+    required this.artists,
+    required this.fetchedAt,
+  });
+}
+
+class _SmartQueueRelatedArtist {
+  final String name;
+  final String provider;
+  final double score;
+
+  const _SmartQueueRelatedArtist({
+    required this.name,
+    required this.provider,
+    required this.score,
+  });
+}
+
+class _SmartQueueArtistSeed {
+  final String id;
+  final String name;
+  final String provider;
+  final double score;
+
+  const _SmartQueueArtistSeed({
+    required this.id,
+    required this.name,
+    required this.provider,
+    required this.score,
+  });
+}
+
+class _SmartQueueCandidate {
+  final Track track;
+  final String key;
+  final Map<String, double> features;
+  final double score;
+
+  const _SmartQueueCandidate({
+    required this.track,
+    required this.key,
+    required this.features,
+    required this.score,
+  });
 }
 
 final playbackProvider = NotifierProvider<PlaybackController, PlaybackState>(

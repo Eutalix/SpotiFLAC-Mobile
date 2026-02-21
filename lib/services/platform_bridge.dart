@@ -55,6 +55,17 @@ class PlatformBridge {
     return jsonDecode(result as String) as Map<String, dynamic>;
   }
 
+  static Future<Map<String, dynamic>> getSpotifyRelatedArtists(
+    String artistId, {
+    int limit = 12,
+  }) async {
+    final result = await _channel.invokeMethod('getSpotifyRelatedArtists', {
+      'artist_id': artistId,
+      'limit': limit,
+    });
+    return jsonDecode(result as String) as Map<String, dynamic>;
+  }
+
   static Future<Map<String, dynamic>> checkAvailability(
     String spotifyId,
     String isrc,
@@ -558,6 +569,17 @@ class PlatformBridge {
       'track_limit': trackLimit,
       'artist_limit': artistLimit,
       'filter': filter ?? '',
+    });
+    return jsonDecode(result as String) as Map<String, dynamic>;
+  }
+
+  static Future<Map<String, dynamic>> getDeezerRelatedArtists(
+    String artistId, {
+    int limit = 12,
+  }) async {
+    final result = await _channel.invokeMethod('getDeezerRelatedArtists', {
+      'artist_id': artistId,
+      'limit': limit,
     });
     return jsonDecode(result as String) as Map<String, dynamic>;
   }

@@ -12,6 +12,7 @@ class AppSettings {
   final String storageMode; // 'app' or 'saf'
   final String downloadTreeUri; // SAF persistable tree URI
   final bool autoFallback;
+  final bool smartQueueEnabled; // Enable smart curated autoplay queue
   final bool embedLyrics;
   final bool maxQualityCover;
   final bool isFirstLaunch;
@@ -86,6 +87,7 @@ class AppSettings {
     this.storageMode = 'app',
     this.downloadTreeUri = '',
     this.autoFallback = true,
+    this.smartQueueEnabled = true,
     this.embedLyrics = true,
     this.maxQualityCover = true,
     this.isFirstLaunch = true,
@@ -149,6 +151,7 @@ class AppSettings {
     String? storageMode,
     String? downloadTreeUri,
     bool? autoFallback,
+    bool? smartQueueEnabled,
     bool? embedLyrics,
     bool? maxQualityCover,
     bool? isFirstLaunch,
@@ -206,6 +209,7 @@ class AppSettings {
       storageMode: storageMode ?? this.storageMode,
       downloadTreeUri: downloadTreeUri ?? this.downloadTreeUri,
       autoFallback: autoFallback ?? this.autoFallback,
+      smartQueueEnabled: smartQueueEnabled ?? this.smartQueueEnabled,
       embedLyrics: embedLyrics ?? this.embedLyrics,
       maxQualityCover: maxQualityCover ?? this.maxQualityCover,
       isFirstLaunch: isFirstLaunch ?? this.isFirstLaunch,

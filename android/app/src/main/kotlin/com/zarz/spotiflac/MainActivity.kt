@@ -1424,6 +1424,14 @@ class MainActivity: AudioServiceFragmentActivity() {
                             }
                             result.success(response)
                         }
+                        "getSpotifyRelatedArtists" -> {
+                            val artistId = call.argument<String>("artist_id") ?: ""
+                            val limit = call.argument<Int>("limit") ?: 12
+                            val response = withContext(Dispatchers.IO) {
+                                Gobackend.getSpotifyRelatedArtists(artistId, limit.toLong())
+                            }
+                            result.success(response)
+                        }
                         "checkAvailability" -> {
                             val spotifyId = call.argument<String>("spotify_id") ?: ""
                             val isrc = call.argument<String>("isrc") ?: ""
@@ -2105,6 +2113,14 @@ class MainActivity: AudioServiceFragmentActivity() {
                             val filter = call.argument<String>("filter") ?: ""
                             val response = withContext(Dispatchers.IO) {
                                 Gobackend.searchDeezerAll(query, trackLimit.toLong(), artistLimit.toLong(), filter)
+                            }
+                            result.success(response)
+                        }
+                        "getDeezerRelatedArtists" -> {
+                            val artistId = call.argument<String>("artist_id") ?: ""
+                            val limit = call.argument<Int>("limit") ?: 12
+                            val response = withContext(Dispatchers.IO) {
+                                Gobackend.getDeezerRelatedArtists(artistId, limit.toLong())
                             }
                             result.success(response)
                         }

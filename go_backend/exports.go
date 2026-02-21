@@ -123,6 +123,35 @@ func SearchSpotifyAll(query string, trackLimit, artistLimit int) (string, error)
 	return string(jsonBytes), nil
 }
 
+func GetSpotifyRelatedArtists(artistID string, limit int) (string, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
+	defer cancel()
+
+	client, err := NewSpotifyMetadataClient()
+	if err != nil {
+		return "", err
+	}
+
+	normalizedArtistID := strings.TrimSpace(strings.TrimPrefix(artistID, "spotify:"))
+	if normalizedArtistID == "" {
+		return "", fmt.Errorf("invalid Spotify artist ID")
+	}
+
+	artists, err := client.GetRelatedArtists(ctx, normalizedArtistID, limit)
+	if err != nil {
+		return "", err
+	}
+
+	resp := map[string]interface{}{
+		"artists": artists,
+	}
+	jsonBytes, err := json.Marshal(resp)
+	if err != nil {
+		return "", err
+	}
+	return string(jsonBytes), nil
+}
+
 func CheckAvailability(spotifyID, isrc string) (string, error) {
 	client := NewSongLinkClient()
 	availability, err := client.CheckTrackAvailability(spotifyID, isrc)
@@ -1159,6 +1188,26 @@ func SearchDeezerAll(query string, trackLimit, artistLimit int, filter string) (
 		return "", err
 	}
 
+	return string(jsonBytes), nil
+}
+
+func GetDeezerRelatedArtists(artistID string, limit int) (string, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
+	defer cancel()
+
+	client := GetDeezerClient()
+	artists, err := client.GetRelatedArtists(ctx, artistID, limit)
+	if err != nil {
+		return "", err
+	}
+
+	resp := map[string]interface{}{
+		"artists": artists,
+	}
+	jsonBytes, err := json.Marshal(resp)
+	if err != nil {
+		return "", err
+	}
 	return string(jsonBytes), nil
 }
 

@@ -15,6 +15,7 @@ AppSettings _$AppSettingsFromJson(Map<String, dynamic> json) => AppSettings(
   storageMode: json['storageMode'] as String? ?? 'app',
   downloadTreeUri: json['downloadTreeUri'] as String? ?? '',
   autoFallback: json['autoFallback'] as bool? ?? true,
+  smartQueueEnabled: json['smartQueueEnabled'] as bool? ?? true,
   embedLyrics: json['embedLyrics'] as bool? ?? true,
   maxQualityCover: json['maxQualityCover'] as bool? ?? true,
   isFirstLaunch: json['isFirstLaunch'] as bool? ?? true,
@@ -51,10 +52,7 @@ AppSettings _$AppSettingsFromJson(Map<String, dynamic> json) => AppSettings(
   autoExportFailedDownloads:
       json['autoExportFailedDownloads'] as bool? ?? false,
   downloadNetworkMode: json['downloadNetworkMode'] as String? ?? 'any',
-  networkCompatibilityMode:
-      json['networkCompatibilityMode'] as bool? ??
-      json['songLinkCompatibilityMode'] as bool? ??
-      false,
+  networkCompatibilityMode: json['networkCompatibilityMode'] as bool? ?? false,
   songLinkRegion: json['songLinkRegion'] as String? ?? 'US',
   localLibraryEnabled: json['localLibraryEnabled'] as bool? ?? false,
   localLibraryPath: json['localLibraryPath'] as String? ?? '',
@@ -86,6 +84,7 @@ Map<String, dynamic> _$AppSettingsToJson(
   'storageMode': instance.storageMode,
   'downloadTreeUri': instance.downloadTreeUri,
   'autoFallback': instance.autoFallback,
+  'smartQueueEnabled': instance.smartQueueEnabled,
   'embedLyrics': instance.embedLyrics,
   'maxQualityCover': instance.maxQualityCover,
   'isFirstLaunch': instance.isFirstLaunch,
