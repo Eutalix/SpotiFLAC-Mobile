@@ -1,0 +1,68 @@
+name: Build Debug ARM64
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - feat/download-resume 
+
+jobs:
+  build-android-debug:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Free disk space
+        run: |
+          sudo rm -rf /usr/share/dotnet /opt/ghc /opt/hostedtoolcache/CodeQL /usr/local/share/boost /usr/share/swift /usr/local/.ghcup
+          sudo docker image prune --all --force
+          df -h
+          
+      - name: Checkout repository
+        uses: actions/checkout@v6
+        with:
+          ref: feat/download-resume
+
+
+      - name: Setup Java
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: 17
+
+      - name: Setup Go
+        uses: actions/setup-go@v6
+        with:
+          go-version: 1.26
+          cache-dependency-path: go_backend/go.sum
+
+      - name: Install gomobile
+        run: |
+          go install golang.org/x/mobile/cmd/gomobile@latest
+          gomobile init
+
+      - name: Build Go backend for Android
+        working-directory: go_backend
+        run: |
+          mkdir -p ../android/app/libs
+          gomobile bind -target=android -androidapi 24 -o ../android/app/libs/gobackend.aar .
+        env:
+          CGO_ENABLED: 1
+          
+      - name: Setup Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: "3.38.1"
+          channel: stable
+          cache: true
+     
+
+      - name: Get Flutter dependencies
+        run: flutter pub get
+
+      - name: Generate app icons
+        run: dart run flutter_launcher_icons
+
+      - name: Build APK (Debug arm64)
+        run: |
+          flutter build apk --debug --target-platform android-arm64
+          ls -la build/app/outputs/flutter-apk/
