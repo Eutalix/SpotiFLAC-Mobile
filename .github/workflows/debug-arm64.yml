@@ -71,7 +71,7 @@ jobs:
           ls -la build/app/outputs/flutter-apk/
 
       - name: Upload APK artifact
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@v3
         with:
           name: debug-arm64-apk
           path: build/app/outputs/flutter-apk/app-arm64-v8a-debug.apk
