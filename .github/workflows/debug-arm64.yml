@@ -3,13 +3,13 @@ name: Build Debug ARM64
 on:
   workflow_dispatch:
     inputs:
-      target_branch:
-        description: "Branch to build"
+      branch:
+        description: 'Branch to build'
         required: true
-        default: "feat/download-resume"
+        default: 'feat/download-resume'
   push:
     branches:
-      - main
+      - main  
 
 jobs:
   build-android-debug:
@@ -25,7 +25,7 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v6
         with:
-          ref: ${{ github.event.inputs.target_branch }}
+          ref: ${{ github.event.inputs.branch }}
 
       - name: Setup Java
         uses: actions/setup-java@v5
@@ -69,3 +69,9 @@ jobs:
         run: |
           flutter build apk --debug --target-platform android-arm64
           ls -la build/app/outputs/flutter-apk/
+
+      - name: Upload APK artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: debug-arm64-apk
+          path: build/app/outputs/flutter-apk/app-arm64-v8a-debug.apk
