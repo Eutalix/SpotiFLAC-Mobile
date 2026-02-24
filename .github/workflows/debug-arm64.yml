@@ -2,9 +2,14 @@ name: Build Debug ARM64
 
 on:
   workflow_dispatch:
+    inputs:
+      target_branch:
+        description: "Branch to build"
+        required: true
+        default: "feat/download-resume"
   push:
     branches:
-      - feat/download-resume 
+      - main
 
 jobs:
   build-android-debug:
@@ -16,12 +21,11 @@ jobs:
           sudo rm -rf /usr/share/dotnet /opt/ghc /opt/hostedtoolcache/CodeQL /usr/local/share/boost /usr/share/swift /usr/local/.ghcup
           sudo docker image prune --all --force
           df -h
-          
+
       - name: Checkout repository
         uses: actions/checkout@v6
         with:
-          ref: feat/download-resume
-
+          ref: ${{ github.event.inputs.target_branch }}
 
       - name: Setup Java
         uses: actions/setup-java@v5
@@ -47,14 +51,13 @@ jobs:
           gomobile bind -target=android -androidapi 24 -o ../android/app/libs/gobackend.aar .
         env:
           CGO_ENABLED: 1
-          
+
       - name: Setup Flutter
         uses: subosito/flutter-action@v2
         with:
           flutter-version: "3.38.1"
           channel: stable
           cache: true
-     
 
       - name: Get Flutter dependencies
         run: flutter pub get
