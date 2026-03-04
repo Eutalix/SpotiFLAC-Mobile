@@ -16,10 +16,10 @@ import 'package:spotiflac_android/screens/store_tab.dart';
 import 'package:spotiflac_android/screens/queue_tab.dart';
 import 'package:spotiflac_android/screens/settings/settings_tab.dart';
 import 'package:spotiflac_android/services/platform_bridge.dart';
+import 'package:spotiflac_android/services/shell_navigation_service.dart';
 import 'package:spotiflac_android/services/share_intent_service.dart';
 import 'package:spotiflac_android/services/update_checker.dart';
 import 'package:spotiflac_android/widgets/update_dialog.dart';
-import 'package:spotiflac_android/widgets/mini_player_bar.dart';
 import 'package:spotiflac_android/utils/logger.dart';
 
 final _log = AppLogger('MainShell');
@@ -38,16 +38,20 @@ class _MainShellState extends ConsumerState<MainShell> {
   StreamSubscription<String>? _shareSubscription;
   DateTime? _lastBackPress;
   final GlobalKey<NavigatorState> _homeTabNavigatorKey =
-      GlobalKey<NavigatorState>();
+      ShellNavigationService.homeTabNavigatorKey;
   final GlobalKey<NavigatorState> _libraryTabNavigatorKey =
-      GlobalKey<NavigatorState>();
+      ShellNavigationService.libraryTabNavigatorKey;
   final GlobalKey<NavigatorState> _storeTabNavigatorKey =
-      GlobalKey<NavigatorState>();
+      ShellNavigationService.storeTabNavigatorKey;
 
   @override
   void initState() {
     super.initState();
     _pageController = PageController(initialPage: _currentIndex);
+    ShellNavigationService.syncState(
+      currentTabIndex: _currentIndex,
+      showStoreTab: false,
+    );
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _checkForUpdates();
       _setupShareListener();
@@ -242,6 +246,13 @@ class _MainShellState extends ConsumerState<MainShell> {
     if (_currentIndex != index) {
       HapticFeedback.selectionClick();
       setState(() => _currentIndex = index);
+      final showStore = ref.read(
+        settingsProvider.select((s) => s.showExtensionStore),
+      );
+      ShellNavigationService.syncState(
+        currentTabIndex: _currentIndex,
+        showStoreTab: showStore,
+      );
       _pageController.animateToPage(
         index,
         duration: const Duration(milliseconds: 250),
@@ -254,6 +265,13 @@ class _MainShellState extends ConsumerState<MainShell> {
     final previousIndex = _currentIndex;
     if (_currentIndex != index) {
       setState(() => _currentIndex = index);
+      final showStore = ref.read(
+        settingsProvider.select((s) => s.showExtensionStore),
+      );
+      ShellNavigationService.syncState(
+        currentTabIndex: _currentIndex,
+        showStoreTab: showStore,
+      );
       FocusManager.instance.primaryFocus?.unfocus();
       if (index == 0 && previousIndex != 0) {
         _resetHomeToMain();
@@ -356,7 +374,7 @@ class _MainShellState extends ConsumerState<MainShell> {
     if (_lastBackPress != null &&
         now.difference(_lastBackPress!) < const Duration(seconds: 2)) {
       _log.i('Back: step 8 - double-tap exit');
-      SystemNavigator.pop();
+      unawaited(PlatformBridge.exitApp());
     } else {
       _log.i('Back: step 7 - first tap, showing exit snackbar');
       _lastBackPress = now;
@@ -384,6 +402,10 @@ class _MainShellState extends ConsumerState<MainShell> {
     );
     final showStore = ref.watch(
       settingsProvider.select((s) => s.showExtensionStore),
+    );
+    ShellNavigationService.syncState(
+      currentTabIndex: _currentIndex,
+      showStoreTab: showStore,
     );
     final storeUpdatesCount = ref.watch(
       storeProvider.select((s) => s.updatesAvailableCount),
@@ -464,28 +486,17 @@ class _MainShellState extends ConsumerState<MainShell> {
       });
     }
 
-    return PopScope(
-      canPop: false,
-      onPopInvokedWithResult: (didPop, result) async {
-        if (didPop) {
-          return;
-        }
-
+    return BackButtonListener(
+      onBackButtonPressed: () async {
         _handleBackPress();
+        return true;
       },
       child: Scaffold(
-        body: Column(
-          children: [
-            Expanded(
-              child: PageView(
-                controller: _pageController,
-                onPageChanged: _onPageChanged,
-                physics: const NeverScrollableScrollPhysics(),
-                children: tabs,
-              ),
-            ),
-            const MiniPlayerBar(),
-          ],
+        body: PageView(
+          controller: _pageController,
+          onPageChanged: _onPageChanged,
+          physics: const NeverScrollableScrollPhysics(),
+          children: tabs,
         ),
         bottomNavigationBar: NavigationBar(
           selectedIndex: _currentIndex.clamp(0, maxIndex),

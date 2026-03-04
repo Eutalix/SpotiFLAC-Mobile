@@ -6,11 +6,13 @@ import 'package:spotiflac_android/services/platform_bridge.dart';
 import 'package:spotiflac_android/l10n/l10n.dart';
 import 'package:spotiflac_android/models/track.dart';
 import 'package:spotiflac_android/providers/download_queue_provider.dart';
+import 'package:spotiflac_android/providers/library_collections_provider.dart';
 import 'package:spotiflac_android/utils/file_access.dart';
 import 'package:spotiflac_android/providers/settings_provider.dart';
 import 'package:spotiflac_android/providers/local_library_provider.dart';
 import 'package:spotiflac_android/providers/playback_provider.dart';
 import 'package:spotiflac_android/widgets/download_service_picker.dart';
+import 'package:spotiflac_android/widgets/playlist_picker_sheet.dart';
 import 'package:spotiflac_android/widgets/track_collection_quick_actions.dart';
 
 class PlaylistScreen extends ConsumerStatefulWidget {
@@ -109,6 +111,8 @@ class _PlaylistScreenState extends ConsumerState<PlaylistScreen> {
       artistName: (data['artists'] ?? data['artist'] ?? '').toString(),
       albumName: (data['album_name'] ?? data['album'] ?? '').toString(),
       albumArtist: data['album_artist']?.toString(),
+      artistId: (data['artist_id'] ?? data['artistId'])?.toString(),
+      albumId: data['album_id']?.toString(),
       coverUrl: (data['cover_url'] ?? data['images'])?.toString(),
       isrc: data['isrc']?.toString(),
       duration: (durationMs / 1000).round(),
@@ -168,9 +172,6 @@ class _PlaylistScreenState extends ConsumerState<PlaylistScreen> {
   }
 
   Widget _buildAppBar(BuildContext context, ColorScheme colorScheme) {
-    final isStreamingMode = ref.watch(
-      settingsProvider.select((s) => s.isStreamingMode),
-    );
     final expandedHeight = _calculateExpandedHeight(context);
 
     return SliverAppBar(
@@ -301,33 +302,15 @@ class _PlaylistScreenState extends ConsumerState<PlaylistScreen> {
                             ),
                           ),
                           const SizedBox(height: 16),
-                          Center(
-                            child: FilledButton.icon(
-                              onPressed: () => isStreamingMode
-                                  ? _playAll(context)
-                                  : _downloadAll(context),
-                              icon: Icon(
-                                isStreamingMode
-                                    ? Icons.play_arrow_rounded
-                                    : Icons.download,
-                                size: 18,
-                              ),
-                              label: Text(
-                                isStreamingMode
-                                    ? context.l10n.playAllCount(_tracks.length)
-                                    : context.l10n.downloadAllCount(
-                                        _tracks.length,
-                                      ),
-                              ),
-                              style: FilledButton.styleFrom(
-                                backgroundColor: Colors.white,
-                                foregroundColor: Colors.black87,
-                                minimumSize: const Size(0, 48),
-                                shape: RoundedRectangleBorder(
-                                  borderRadius: BorderRadius.circular(24),
-                                ),
-                              ),
-                            ),
+                          Row(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              _buildLoveAllButton(),
+                              const SizedBox(width: 12),
+                              _buildDownloadAllCenterButton(context),
+                              const SizedBox(width: 12),
+                              _buildAddToPlaylistButton(context),
+                            ],
                           ),
                         ],
                       ],
@@ -425,19 +408,6 @@ class _PlaylistScreenState extends ConsumerState<PlaylistScreen> {
 
   void _downloadTrack(BuildContext context, Track track) {
     final settings = ref.read(settingsProvider);
-    if (settings.isStreamingMode) {
-      final messenger = ScaffoldMessenger.of(this.context);
-      ref
-          .read(playbackProvider.notifier)
-          .playTrackStreamAndSetQueue(track, _tracks)
-          .catchError((e) {
-            if (!mounted) return;
-            messenger.showSnackBar(
-              SnackBar(content: Text('Cannot play stream: $e')),
-            );
-          });
-      return;
-    }
 
     if (settings.askQualityBeforeDownload) {
       DownloadServicePicker.show(
@@ -466,22 +436,165 @@ class _PlaylistScreenState extends ConsumerState<PlaylistScreen> {
     }
   }
 
-  void _downloadAll(BuildContext context) {
+  // ── Shuffle / Love / Download buttons ──
+
+  Widget _buildCircleButton({
+    required IconData icon,
+    required String tooltip,
+    required VoidCallback? onPressed,
+  }) {
+    return Container(
+      width: 48,
+      height: 48,
+      decoration: BoxDecoration(
+        shape: BoxShape.circle,
+        color: Colors.white.withValues(alpha: 0.15),
+        border: Border.all(
+          color: Colors.white.withValues(alpha: 0.3),
+          width: 1,
+        ),
+      ),
+      child: IconButton(
+        onPressed: onPressed,
+        icon: Icon(icon, size: 22, color: Colors.white),
+        tooltip: tooltip,
+        padding: EdgeInsets.zero,
+      ),
+    );
+  }
+
+  Widget _buildLoveAllButton() {
+    final collectionsState = ref.watch(libraryCollectionsProvider);
+    final allLoved =
+        _tracks.isNotEmpty && _tracks.every((t) => collectionsState.isLoved(t));
+
+    return Container(
+      width: 48,
+      height: 48,
+      decoration: BoxDecoration(
+        shape: BoxShape.circle,
+        color: Colors.white.withValues(alpha: 0.15),
+        border: Border.all(
+          color: Colors.white.withValues(alpha: 0.3),
+          width: 1,
+        ),
+      ),
+      child: IconButton(
+        onPressed: _tracks.isEmpty ? null : () => _loveAll(_tracks),
+        icon: Icon(
+          allLoved ? Icons.favorite : Icons.favorite_border,
+          size: 22,
+          color: allLoved ? Colors.redAccent : Colors.white,
+        ),
+        tooltip: allLoved ? 'Remove from Loved' : 'Love All',
+        padding: EdgeInsets.zero,
+      ),
+    );
+  }
+
+  Widget _buildDownloadAllCenterButton(BuildContext context) {
+    return FilledButton.icon(
+      onPressed: _tracks.isEmpty ? null : () => _confirmDownloadAll(context),
+      icon: const Icon(Icons.download_rounded, size: 18),
+      label: Text(context.l10n.downloadAllCount(_tracks.length)),
+      style: FilledButton.styleFrom(
+        backgroundColor: Colors.white,
+        foregroundColor: Colors.black87,
+        minimumSize: const Size(0, 48),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
+      ),
+    );
+  }
+
+  Widget _buildAddToPlaylistButton(BuildContext context) {
+    return _buildCircleButton(
+      icon: Icons.playlist_add,
+      tooltip: 'Add to Playlist',
+      onPressed: _tracks.isEmpty
+          ? null
+          : () => showAddTracksToPlaylistSheet(context, ref, _tracks),
+    );
+  }
+
+  void _confirmDownloadAll(BuildContext context) {
     if (_tracks.isEmpty) return;
+    showDialog(
+      context: context,
+      builder: (dialogContext) {
+        final colorScheme = Theme.of(dialogContext).colorScheme;
+        return AlertDialog(
+          backgroundColor: colorScheme.surfaceContainerHigh,
+          title: const Text('Download All'),
+          content: Text('Download ${_tracks.length} tracks?'),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(dialogContext),
+              child: Text(context.l10n.dialogCancel),
+            ),
+            FilledButton(
+              onPressed: () {
+                Navigator.pop(dialogContext);
+                _downloadAll(context);
+              },
+              child: const Text('Download'),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  Future<void> _loveAll(List<Track> tracks) async {
+    final notifier = ref.read(libraryCollectionsProvider.notifier);
+    final state = ref.read(libraryCollectionsProvider);
+    final allLoved = tracks.every((t) => state.isLoved(t));
+
+    if (allLoved) {
+      for (final track in tracks) {
+        final key = trackCollectionKey(track);
+        await notifier.removeFromLoved(key);
+      }
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Removed ${tracks.length} tracks from Loved')),
+        );
+      }
+    } else {
+      int addedCount = 0;
+      for (final track in tracks) {
+        if (!state.isLoved(track)) {
+          await notifier.toggleLoved(track);
+          addedCount++;
+        }
+      }
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Added $addedCount tracks to Loved')),
+        );
+      }
+    }
+  }
+
+  void _downloadAll(BuildContext context) {
+    _downloadTracks(context, _tracks);
+  }
+
+  void _downloadTracks(BuildContext context, List<Track> tracks) {
+    if (tracks.isEmpty) return;
     final settings = ref.read(settingsProvider);
     if (settings.askQualityBeforeDownload) {
       DownloadServicePicker.show(
         context,
-        trackName: '${_tracks.length} tracks',
+        trackName: '${tracks.length} tracks',
         artistName: widget.playlistName,
         onSelect: (quality, service) {
           ref
               .read(downloadQueueProvider.notifier)
-              .addMultipleToQueue(_tracks, service, qualityOverride: quality);
+              .addMultipleToQueue(tracks, service, qualityOverride: quality);
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
               content: Text(
-                context.l10n.snackbarAddedTracksToQueue(_tracks.length),
+                context.l10n.snackbarAddedTracksToQueue(tracks.length),
               ),
             ),
           );
@@ -490,30 +603,13 @@ class _PlaylistScreenState extends ConsumerState<PlaylistScreen> {
     } else {
       ref
           .read(downloadQueueProvider.notifier)
-          .addMultipleToQueue(_tracks, settings.defaultService);
+          .addMultipleToQueue(tracks, settings.defaultService);
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text(
-            context.l10n.snackbarAddedTracksToQueue(_tracks.length),
-          ),
+          content: Text(context.l10n.snackbarAddedTracksToQueue(tracks.length)),
         ),
       );
     }
-  }
-
-  void _playAll(BuildContext context) {
-    if (_tracks.isEmpty) return;
-    final firstTrack = _tracks.first;
-    final messenger = ScaffoldMessenger.of(this.context);
-    ref
-        .read(playbackProvider.notifier)
-        .playTrackStreamAndSetQueue(firstTrack, _tracks)
-        .catchError((e) {
-          if (!mounted) return;
-          messenger.showSnackBar(
-            SnackBar(content: Text('Cannot play stream: $e')),
-          );
-        });
   }
 }
 
@@ -536,7 +632,12 @@ class _PlaylistTrackItem extends ConsumerWidget {
 
     final isInHistory = ref.watch(
       downloadHistoryProvider.select((state) {
-        return state.isDownloaded(track.id);
+        if (state.isDownloaded(track.id)) return true;
+        final isrc = track.isrc?.trim();
+        if (isrc != null && isrc.isNotEmpty && state.getByIsrc(isrc) != null) {
+          return true;
+        }
+        return state.findByTrackAndArtist(track.name, track.artistName) != null;
       }),
     );
 
@@ -612,7 +713,7 @@ class _PlaylistTrackItem extends ConsumerWidget {
                   style: TextStyle(color: colorScheme.onSurfaceVariant),
                 ),
               ),
-              if (isInLocalLibrary) ...[
+              if (isInLocalLibrary || isInHistory) ...[
                 const SizedBox(width: 6),
                 Container(
                   padding: const EdgeInsets.symmetric(
@@ -647,13 +748,7 @@ class _PlaylistTrackItem extends ConsumerWidget {
             ],
           ),
           trailing: TrackCollectionQuickActions(track: track),
-          onTap: () => _handleTap(
-            context,
-            ref,
-            isQueued: isQueued,
-            isInHistory: isInHistory,
-            isInLocalLibrary: isInLocalLibrary,
-          ),
+          onTap: () => _handleTap(context, ref, isQueued: isQueued),
           onLongPress: () => TrackCollectionQuickActions.showTrackOptionsSheet(
             context,
             ref,
@@ -668,53 +763,84 @@ class _PlaylistTrackItem extends ConsumerWidget {
     BuildContext context,
     WidgetRef ref, {
     required bool isQueued,
-    required bool isInHistory,
-    required bool isInLocalLibrary,
   }) async {
-    final isStreamingMode = ref.read(settingsProvider).isStreamingMode;
-    if (isStreamingMode) {
-      onDownload();
-      return;
-    }
-
     if (isQueued) return;
 
-    if (isInLocalLibrary) {
-      if (context.mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(context.l10n.snackbarAlreadyInLibrary(track.name)),
-          ),
-        );
-      }
+    final playedLocal = await _playLocalIfAvailable(context, ref);
+    if (playedLocal) {
       return;
-    }
-
-    if (isInHistory) {
-      final historyItem = ref
-          .read(downloadHistoryProvider.notifier)
-          .getBySpotifyId(track.id);
-      if (historyItem != null) {
-        final exists = await fileExists(historyItem.filePath);
-        if (exists) {
-          if (context.mounted) {
-            ScaffoldMessenger.of(context).showSnackBar(
-              SnackBar(
-                content: Text(
-                  context.l10n.snackbarAlreadyDownloaded(track.name),
-                ),
-              ),
-            );
-          }
-          return;
-        } else {
-          ref
-              .read(downloadHistoryProvider.notifier)
-              .removeBySpotifyId(track.id);
-        }
-      }
     }
 
     onDownload();
+  }
+
+  Future<bool> _playLocalIfAvailable(
+    BuildContext context,
+    WidgetRef ref,
+  ) async {
+    final localState = ref.read(localLibraryProvider);
+    final historyState = ref.read(downloadHistoryProvider);
+    final historyNotifier = ref.read(downloadHistoryProvider.notifier);
+
+    try {
+      DownloadHistoryItem? historyItem = historyNotifier.getBySpotifyId(
+        track.id,
+      );
+      final isrc = track.isrc?.trim();
+      historyItem ??= (isrc != null && isrc.isNotEmpty)
+          ? historyNotifier.getByIsrc(isrc)
+          : null;
+      historyItem ??= historyState.findByTrackAndArtist(
+        track.name,
+        track.artistName,
+      );
+
+      if (historyItem != null) {
+        final exists = await fileExists(historyItem.filePath);
+        if (exists) {
+          await ref
+              .read(playbackProvider.notifier)
+              .playLocalPath(
+                path: historyItem.filePath,
+                title: track.name,
+                artist: track.artistName,
+                album: track.albumName,
+                coverUrl: track.coverUrl ?? '',
+              );
+          return true;
+        }
+        historyNotifier.removeFromHistory(historyItem.id);
+      }
+
+      var localItem = (isrc != null && isrc.isNotEmpty)
+          ? localState.getByIsrc(isrc)
+          : null;
+      localItem ??= localState.findByTrackAndArtist(
+        track.name,
+        track.artistName,
+      );
+
+      if (localItem != null && await fileExists(localItem.filePath)) {
+        await ref
+            .read(playbackProvider.notifier)
+            .playLocalPath(
+              path: localItem.filePath,
+              title: localItem.trackName,
+              artist: localItem.artistName,
+              album: localItem.albumName,
+              coverUrl: localItem.coverPath ?? track.coverUrl ?? '',
+            );
+        return true;
+      }
+    } catch (e) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(context.l10n.snackbarCannotOpenFile('$e'))),
+        );
+      }
+      return true;
+    }
+
+    return false;
   }
 }

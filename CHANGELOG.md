@@ -1,76 +1,43 @@
 # Changelog
 
-## [4.0.0] - 2026-02-22
+## [3.7.0] - 2026-03-04
 
-> **Major update warning:** This release introduces a large streaming-focused refactor and broad cross-app behavior changes.
->
-> **Diff scope (`cdc583678558223ecbb552176b53727d303ae218..HEAD`):** 121 files changed, 28,354 insertions(+), 4,598 deletions(-).
+Hey everyone, thank you so much for sticking with SpotiFLAC Mobile.
 
-### Added
+Starting from this release, we're rolling the version back from **v4.x to v3.x**.
 
-- **End-to-End Streaming Mode**: Full streaming playback flow with full-screen player, synced lyrics, media controls, and queue-aware tap behavior across album, artist, playlist, home, and search screens
-- **Smart Queue System**: ML-based queue auto-curation with related artist discovery, plus a dedicated playback queue view
-- **DASH Streaming Pipeline**: Native DASH manifest playback support with local proxy integration and FFmpeg tunnel fallback for unsupported paths
-- **Playback State Persistence**: Player state and queue continuity restored across app restarts
-- **Adaptive Playback Engine**: EventChannel-driven playback/progress updates (replacing polling) and adaptive prefetch behavior
-- **Queue Reliability Controls**: New auto-skip unavailable tracks option during queue playback
-- **Player Quick Action**: New download button in full-screen player top bar
-- **Metadata Control**: New global master switch for embed metadata behavior
-- **Setup Flow Update**: Initial setup now prioritizes mode selection instead of Spotify API setup
-- **Library Workflow Expansion**: Playlist-first library redesign, drag-and-drop categorization, folder multi-select, and batch playlist picker flows
-- **SongLink Region Setting**: Region selection support for metadata/linking behavior
-- **Track Interaction UX**: Long-press context menus for track actions across major collection screens
-- **Batch Tools**: Multi-select share, batch convert, and batch re-enrich improvements for downloaded/local/queue workflows
+### Removed
+
+- **Internal Audio Player** — Removed `just_audio`, `audio_service`, and `audio_session` dependencies entirely. The internal playback engine (smart queue, media notification, shuffle/repeat, lyrics sync, prefetch, playback state persistence) has been completely removed. Playback now delegates to the system's external player.
+- **PlaybackItem Model** — No longer needed without internal playback.
+- **MiniPlayerBar Widget** — Removed the in-app mini player UI.
+- **Media Notification Controls** — Removed notification drawables (`ic_stat_favorite`, `ic_stat_favorite_border`) and the `keep.xml` resource file.
+- **Player Mode Setting** — The `playerMode` setting has been removed since external player is now the only mode.
+- **Online Playback Feature** — Online streaming mode, DASH pipeline, and related components introduced in v4.0.0 are gone from the main branch.
 
 ### Changed
 
-- **Global Mode-Driven Actions**: Interaction mode now drives behavior app-wide (download-oriented vs streaming-oriented actions)
-- **UI Redesign and Responsiveness**: Full-screen cover/parallax rollout and responsive fixes for filter sheets and full-screen player in small screens/landscape
-- **Performance Optimizations**: Granular Riverpod consumers, selective provider watching, computation caching, debounced extension storage writes, and lifecycle cleanups
-- **Lyrics Loading Strategy**: Lyrics are now lazy-loaded only when the lyrics view is visible
-- **Persistence Backend Refactor**: Core persistence paths migrated to SQLite-backed stores for app state and library collections
-- **Shared Code Refactor**: Duplicated logic extracted into shared Dart/Go utilities for cleaner boundaries and maintainability
+- **MainActivity** now extends `FlutterFragmentActivity` directly (previously `AudioServiceFragmentActivity`).
+- **PlaybackController** simplified from ~1200 lines to ~87 lines — now only resolves local file paths and opens them via external player.
+- **ProGuard rules** cleaned up — removed audio_service/just_audio/audio_session rules.
+- **Qobuz** migrated to MusicDL API (Thanks @Ruubiiiii for Hosting the API).
 
-### Fixed
+### Note
+There are three main reasons behind this decision:
 
-- **iOS Build Compatibility**: Resolved `RepeatMode` naming collision with Flutter SDK symbols
-- **Playback Completion Handling**: Fixed track completion restart issues and queue-end completion synchronization
-- **Streaming Stability**: Added guards for playback race conditions during queue/stream state transitions
-- **Provider I/O Safety**: Improved Android/Go file descriptor handling for SAF-based outputs
-- **Metadata Matching Robustness**: Improved title matching with strict emoji handling and name+artist fallback lookup behavior
-- **Navigation Behavior**: Back button now exits app correctly instead of unexpectedly returning to home
+   1. **Respecting the API providers** — After giving it some thought, we realized that the streaming feature was indirectly hurting the API providers who have been generous enough to make their services available. They already offer streaming directly on their own websites, and it only feels right to direct streaming usage back to their platforms.
 
----
+   2. **Long-term sustainability** — We want SpotiFLAC to be around for as long as possible. Keeping certain features in the app could attract unwanted attention and put the project's continued existence at risk. Removing them is a proactive step to keep things running smoothly for everyone.
 
-## [4.0.0] - 2026-02-22
+**Still want online playback? Check out these services:**
+- [DabMusic](https://dabmusic.xyz)
+- [SquidWTF](https://tidal.squid.wtf)
 
-### Added
-
-- **Interaction Mode Setting**: New "Interaction Mode" toggle in Options settings to switch between Downloader Mode (tap to queue downloads) and Streaming Mode (tap to play instantly)
-  - Affects album, artist discography, playlist, home explore, and search screens
-  - All action buttons (Download All, Download Selected, Download Discography) dynamically switch to Play equivalents when in Streaming Mode
-- **Streaming Playback Integration**: Tapping tracks in Streaming Mode plays them via `playTrackStreamAndSetQueue` with full queue support across all collection screens (album, artist, playlist, home, search)
-- **Long-Press Track Context Menus**: Added `onLongPress` handler on track items across album, artist, home, playlist, and search screens to open the track options bottom sheet via `TrackCollectionQuickActions.showTrackOptionsSheet`
-- **USDT TRC20 Crypto Donation**: Added USDT (TRC20) wallet address to Donate page with tap-to-copy-to-clipboard functionality and snackbar confirmation
-- **Localization**: Added interaction mode and streaming playback strings across all 14 supported locales (`optionsInteractionMode`, `modeDownloader`, `modeDownloaderSubtitle`, `modeStreaming`, `modeStreamingSubtitle`, `playAllCount`, `discographyPlay`, `discographyPlayAll`, `discographyPlaySelected`)
-- **Indonesian (ID) Localization**: Full translations for all new streaming mode strings
-
-### Changed
-
-- **Mini Player Bar Layout**: Media section (cover art / lyrics) now uses fixed-height `SizedBox` (50% screen height, clamped 300–560px) instead of `Expanded` for more consistent layout
-- **Lyrics Font Size Increase**: Synced lyrics current line 22→24px, non-current 18→19px; word-by-word highlight 22→24px; unsynced 18→19px
-- **Playback Media Controls**: Removed stop button from notification media controls for cleaner transport bar
-- **Playback Queue Exhaustion**: Player now properly syncs `ProcessingState.completed` state when queue is exhausted instead of silently stopping
-- **`TrackCollectionQuickActions.showTrackOptionsSheet` Made Static**: Extracted to a public static method so all screens can invoke it directly for long-press handling
-- **Bottom Spacing in Mini Player**: Reduced from 16px to 4px for tighter layout
-
-### Fixed
-
-- **Playback State Not Updating on Queue End**: Fixed playback notification staying in "playing" state when all tracks in queue have finished
+Thank you for your understanding and continued support. This decision was made to ensure the long-term sustainability of the app and to respect the ecosystem that has been supporting SpotiFLAC all along. You guys are the best, and we truly appreciate each and every one of you!
 
 ---
 
-## [3.7.0] - 2026-02-19
+## [3.6.0] - 2026-02-19
 
 ### Added
 

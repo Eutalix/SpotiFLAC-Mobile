@@ -6,7 +6,6 @@ import 'package:file_picker/file_picker.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:go_router/go_router.dart';
 import 'package:device_info_plus/device_info_plus.dart';
-import 'package:spotiflac_android/providers/extension_provider.dart';
 import 'package:spotiflac_android/providers/settings_provider.dart';
 import 'package:spotiflac_android/l10n/l10n.dart';
 import 'package:spotiflac_android/services/platform_bridge.dart';
@@ -31,11 +30,7 @@ class _SetupScreenState extends ConsumerState<SetupScreen> {
   bool _isLoading = false;
   int _androidSdkVersion = 0;
 
-  // Mode selection
-  String _selectedMode = 'downloader'; // 'downloader' or 'streaming'
-
-  // We add 1 for the Welcome step
-  int get _totalSteps => (_androidSdkVersion >= 33 ? 4 : 3) + 1;
+  int get _totalSteps => _androidSdkVersion >= 33 ? 4 : 3;
 
   @override
   void initState() {
@@ -404,11 +399,7 @@ class _SetupScreenState extends ConsumerState<SetupScreen> {
             );
       }
 
-      ref.read(settingsProvider.notifier).setInteractionMode(_selectedMode);
       ref.read(settingsProvider.notifier).setMetadataSource('deezer');
-      await ref
-          .read(extensionProvider.notifier)
-          .ensureSpotifyWebExtensionReady();
       ref.read(settingsProvider.notifier).setFirstLaunchComplete();
 
       if (mounted) context.go('/tutorial');
@@ -467,8 +458,6 @@ class _SetupScreenState extends ConsumerState<SetupScreen> {
           return _notificationPermissionGranted;
         case 2:
           return _selectedDirectory != null;
-        case 3:
-          return true; // Mode selection always has a default
       }
     } else {
       switch (logicStep) {
@@ -476,8 +465,6 @@ class _SetupScreenState extends ConsumerState<SetupScreen> {
           return _storagePermissionGranted;
         case 1:
           return _selectedDirectory != null;
-        case 2:
-          return true; // Mode selection always has a default
       }
     }
     return false;
@@ -554,7 +541,6 @@ class _SetupScreenState extends ConsumerState<SetupScreen> {
                   if (_androidSdkVersion >= 33)
                     _buildNotificationStep(colorScheme),
                   _buildDirectoryStep(colorScheme),
-                  _buildModeSelectionStep(colorScheme),
                 ],
               ),
             ),
@@ -748,51 +734,6 @@ class _SetupScreenState extends ConsumerState<SetupScreen> {
       ),
     );
   }
-
-  Widget _buildModeSelectionStep(ColorScheme colorScheme) {
-    return _StepLayout(
-      title: context.l10n.setupModeSelectionTitle,
-      description: context.l10n.setupModeSelectionDescription,
-      icon: Icons.tune,
-      child: Column(
-        children: [
-          _ModeCard(
-            icon: Icons.download,
-            title: context.l10n.setupModeDownloaderTitle,
-            features: [
-              context.l10n.setupModeDownloaderFeature1,
-              context.l10n.setupModeDownloaderFeature2,
-              context.l10n.setupModeDownloaderFeature3,
-            ],
-            isSelected: _selectedMode == 'downloader',
-            onTap: () => setState(() => _selectedMode = 'downloader'),
-            colorScheme: colorScheme,
-          ),
-          const SizedBox(height: 12),
-          _ModeCard(
-            icon: Icons.headphones,
-            title: context.l10n.setupModeStreamingTitle,
-            features: [
-              context.l10n.setupModeStreamingFeature1,
-              context.l10n.setupModeStreamingFeature2,
-              context.l10n.setupModeStreamingFeature3,
-            ],
-            isSelected: _selectedMode == 'streaming',
-            onTap: () => setState(() => _selectedMode = 'streaming'),
-            colorScheme: colorScheme,
-          ),
-          const SizedBox(height: 16),
-          Text(
-            context.l10n.setupModeChangeableLater,
-            style: Theme.of(context).textTheme.bodySmall?.copyWith(
-              color: colorScheme.onSurfaceVariant,
-            ),
-            textAlign: TextAlign.center,
-          ),
-        ],
-      ),
-    );
-  }
 }
 
 class _StepLayout extends StatelessWidget {
@@ -898,129 +839,6 @@ class _SuccessCard extends StatelessWidget {
             ),
           ),
         ],
-      ),
-    );
-  }
-}
-
-class _ModeCard extends StatelessWidget {
-  final IconData icon;
-  final String title;
-  final List<String> features;
-  final bool isSelected;
-  final VoidCallback onTap;
-  final ColorScheme colorScheme;
-
-  const _ModeCard({
-    required this.icon,
-    required this.title,
-    required this.features,
-    required this.isSelected,
-    required this.onTap,
-    required this.colorScheme,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return GestureDetector(
-      onTap: onTap,
-      child: AnimatedContainer(
-        duration: const Duration(milliseconds: 200),
-        curve: Curves.easeInOut,
-        width: double.infinity,
-        padding: const EdgeInsets.all(16),
-        decoration: BoxDecoration(
-          color: isSelected
-              ? colorScheme.primaryContainer
-              : colorScheme.surfaceContainerHighest,
-          borderRadius: BorderRadius.circular(16),
-          border: Border.all(
-            color: isSelected
-                ? colorScheme.primary
-                : colorScheme.outlineVariant,
-            width: isSelected ? 2 : 1,
-          ),
-        ),
-        child: Row(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Padding(
-              padding: const EdgeInsets.only(top: 2),
-              child: Icon(
-                isSelected
-                    ? Icons.radio_button_checked
-                    : Icons.radio_button_unchecked,
-                size: 22,
-                color: isSelected
-                    ? colorScheme.primary
-                    : colorScheme.onSurfaceVariant,
-              ),
-            ),
-            const SizedBox(width: 12),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(
-                    children: [
-                      Icon(
-                        icon,
-                        size: 22,
-                        color: isSelected
-                            ? colorScheme.onPrimaryContainer
-                            : colorScheme.onSurfaceVariant,
-                      ),
-                      const SizedBox(width: 8),
-                      Expanded(
-                        child: Text(
-                          title,
-                          style: Theme.of(context).textTheme.titleMedium
-                              ?.copyWith(
-                                fontWeight: FontWeight.bold,
-                                color: isSelected
-                                    ? colorScheme.onPrimaryContainer
-                                    : colorScheme.onSurface,
-                              ),
-                        ),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 8),
-                  ...features.map(
-                    (feature) => Padding(
-                      padding: const EdgeInsets.only(bottom: 4),
-                      child: Row(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            '\u2022 ',
-                            style: TextStyle(
-                              color: isSelected
-                                  ? colorScheme.onPrimaryContainer
-                                  : colorScheme.onSurfaceVariant,
-                            ),
-                          ),
-                          Expanded(
-                            child: Text(
-                              feature,
-                              style: Theme.of(context).textTheme.bodySmall
-                                  ?.copyWith(
-                                    color: isSelected
-                                        ? colorScheme.onPrimaryContainer
-                                        : colorScheme.onSurfaceVariant,
-                                    height: 1.4,
-                                  ),
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ],
-        ),
       ),
     );
   }

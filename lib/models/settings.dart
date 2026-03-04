@@ -4,7 +4,6 @@ part 'settings.g.dart';
 
 @JsonSerializable()
 class AppSettings {
-  final String interactionMode; // 'downloader' or 'streaming'
   final String defaultService;
   final String audioQuality;
   final String filenameFormat;
@@ -12,8 +11,6 @@ class AppSettings {
   final String storageMode; // 'app' or 'saf'
   final String downloadTreeUri; // SAF persistable tree URI
   final bool autoFallback;
-  final bool autoSkipUnavailableTracks;
-  final bool smartQueueEnabled; // Enable smart curated autoplay queue
   final bool embedMetadata; // Master switch for metadata/cover/lyrics embedding
   final bool embedLyrics;
   final bool maxQualityCover;
@@ -83,11 +80,8 @@ class AppSettings {
   // Version upgrade tracking
   final String
   lastSeenVersion; // Last app version the user has acknowledged (e.g. '3.7.0')
-  final bool
-  hasSeenWhatsNew; // Whether user has seen the What's New screen for current version
 
   const AppSettings({
-    this.interactionMode = 'downloader',
     this.defaultService = 'tidal',
     this.audioQuality = 'LOSSLESS',
     this.filenameFormat = '{title} - {artist}',
@@ -95,8 +89,6 @@ class AppSettings {
     this.storageMode = 'app',
     this.downloadTreeUri = '',
     this.autoFallback = true,
-    this.autoSkipUnavailableTracks = true,
-    this.smartQueueEnabled = true,
     this.embedMetadata = true,
     this.embedLyrics = true,
     this.maxQualityCover = true,
@@ -141,6 +133,7 @@ class AppSettings {
     // Lyrics providers default order
     this.lyricsProviders = const [
       'lrclib',
+      'spotify_api',
       'musixmatch',
       'netease',
       'apple_music',
@@ -152,20 +145,16 @@ class AppSettings {
     this.musixmatchLanguage = '',
     // Version upgrade tracking
     this.lastSeenVersion = '',
-    this.hasSeenWhatsNew = true, // Default true so new installs don't see it
   });
 
   AppSettings copyWith({
-    String? interactionMode,
     String? defaultService,
     String? audioQuality,
     String? filenameFormat,
     String? downloadDirectory,
     String? storageMode,
     String? downloadTreeUri,
-    bool? autoFallback,
-    bool? autoSkipUnavailableTracks,
-    bool? smartQueueEnabled,
+     bool? autoFallback,
     bool? embedMetadata,
     bool? embedLyrics,
     bool? maxQualityCover,
@@ -216,10 +205,8 @@ class AppSettings {
     String? musixmatchLanguage,
     // Version upgrade tracking
     String? lastSeenVersion,
-    bool? hasSeenWhatsNew,
   }) {
     return AppSettings(
-      interactionMode: interactionMode ?? this.interactionMode,
       defaultService: defaultService ?? this.defaultService,
       audioQuality: audioQuality ?? this.audioQuality,
       filenameFormat: filenameFormat ?? this.filenameFormat,
@@ -227,9 +214,6 @@ class AppSettings {
       storageMode: storageMode ?? this.storageMode,
       downloadTreeUri: downloadTreeUri ?? this.downloadTreeUri,
       autoFallback: autoFallback ?? this.autoFallback,
-      autoSkipUnavailableTracks:
-          autoSkipUnavailableTracks ?? this.autoSkipUnavailableTracks,
-      smartQueueEnabled: smartQueueEnabled ?? this.smartQueueEnabled,
       embedMetadata: embedMetadata ?? this.embedMetadata,
       embedLyrics: embedLyrics ?? this.embedLyrics,
       maxQualityCover: maxQualityCover ?? this.maxQualityCover,
@@ -295,13 +279,10 @@ class AppSettings {
       musixmatchLanguage: musixmatchLanguage ?? this.musixmatchLanguage,
       // Version upgrade tracking
       lastSeenVersion: lastSeenVersion ?? this.lastSeenVersion,
-      hasSeenWhatsNew: hasSeenWhatsNew ?? this.hasSeenWhatsNew,
     );
   }
 
   factory AppSettings.fromJson(Map<String, dynamic> json) =>
       _$AppSettingsFromJson(json);
   Map<String, dynamic> toJson() => _$AppSettingsToJson(this);
-
-  bool get isStreamingMode => interactionMode == 'streaming';
 }

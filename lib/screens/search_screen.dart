@@ -5,9 +5,9 @@ import 'package:spotiflac_android/services/cover_cache_manager.dart';
 import 'package:spotiflac_android/models/track.dart';
 import 'package:spotiflac_android/providers/track_provider.dart';
 import 'package:spotiflac_android/providers/download_queue_provider.dart';
-import 'package:spotiflac_android/providers/playback_provider.dart';
 import 'package:spotiflac_android/providers/settings_provider.dart';
 import 'package:spotiflac_android/widgets/track_collection_quick_actions.dart';
+import 'package:spotiflac_android/utils/clickable_metadata.dart';
 
 class SearchScreen extends ConsumerStatefulWidget {
   final String query;
@@ -53,40 +53,12 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
 
   void _downloadTrack(Track track) {
     final settings = ref.read(settingsProvider);
-
-    if (settings.isStreamingMode) {
-      _playTrack(track);
-      return;
-    }
-
     ref
         .read(downloadQueueProvider.notifier)
         .addToQueue(track, settings.defaultService);
     ScaffoldMessenger.of(
       context,
     ).showSnackBar(SnackBar(content: Text('Added "${track.name}" to queue')));
-  }
-
-  Future<void> _playTrack(Track track) async {
-    try {
-      // Play the track and set the entire search result as the queue
-      final tracks = ref.read(trackProvider).tracks;
-      await ref
-          .read(playbackProvider.notifier)
-          .playTrackStreamAndSetQueue(track, tracks);
-    } catch (e) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text('Cannot play stream: $e')));
-    }
-  }
-
-  void _addToStreamQueue(Track track) {
-    ref.read(playbackProvider.notifier).addToQueue(track);
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text('Added "${track.name}" to play queue')),
-    );
   }
 
   @override
@@ -186,14 +158,19 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
       subtitle: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(
-            track.artistName,
+          ClickableArtistName(
+            artistName: track.artistName,
+            artistId: track.artistId,
+            coverUrl: track.coverUrl,
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
             style: TextStyle(color: colorScheme.onSurfaceVariant),
           ),
-          Text(
-            track.albumName,
+          ClickableAlbumName(
+            albumName: track.albumName,
+            albumId: track.albumId,
+            artistName: track.artistName,
+            coverUrl: track.coverUrl,
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
             style: Theme.of(context).textTheme.bodySmall?.copyWith(
@@ -211,14 +188,9 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
         mainAxisSize: MainAxisSize.min,
         children: [
           IconButton(
-            icon: const Icon(Icons.play_arrow_rounded),
-            tooltip: 'Play stream',
-            onPressed: () => _playTrack(track),
-          ),
-          IconButton(
-            icon: const Icon(Icons.playlist_add_rounded, size: 20),
-            tooltip: 'Add to play queue',
-            onPressed: () => _addToStreamQueue(track),
+            icon: const Icon(Icons.download_rounded),
+            tooltip: 'Download',
+            onPressed: () => _downloadTrack(track),
           ),
         ],
       ),

@@ -10,7 +10,6 @@ import 'package:spotiflac_android/models/track.dart';
 import 'package:spotiflac_android/providers/download_queue_provider.dart';
 import 'package:spotiflac_android/providers/library_collections_provider.dart';
 import 'package:spotiflac_android/providers/local_library_provider.dart';
-import 'package:spotiflac_android/providers/playback_provider.dart';
 import 'package:spotiflac_android/services/library_database.dart';
 import 'package:spotiflac_android/providers/settings_provider.dart';
 import 'package:spotiflac_android/services/cover_cache_manager.dart';
@@ -789,6 +788,17 @@ class _LibraryTracksFolderScreenState
                               ],
                             ),
                           ),
+                          const SizedBox(height: 16),
+                          Row(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              _buildHeaderActionPlaceholder(),
+                              const SizedBox(width: 12),
+                              _buildDownloadAllCenterButton(entries),
+                              const SizedBox(width: 12),
+                              _buildHeaderActionPlaceholder(),
+                            ],
+                          ),
                         ],
                       ],
                     ),
@@ -817,6 +827,91 @@ class _LibraryTracksFolderScreenState
             : () => Navigator.pop(context),
       ),
     );
+  }
+
+  // ── Header actions ──
+
+  Widget _buildHeaderActionPlaceholder() => const SizedBox(width: 48, height: 48);
+
+  Widget _buildDownloadAllCenterButton(List<CollectionTrackEntry> entries) {
+    final tracks = entries.map((e) => e.track).toList(growable: false);
+    return FilledButton.icon(
+      onPressed: tracks.isEmpty ? null : () => _confirmDownloadAll(tracks),
+      icon: const Icon(Icons.download_rounded, size: 18),
+      label: Text(context.l10n.downloadAllCount(tracks.length)),
+      style: FilledButton.styleFrom(
+        backgroundColor: Colors.white,
+        foregroundColor: Colors.black87,
+        minimumSize: const Size(0, 48),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
+      ),
+    );
+  }
+
+  void _confirmDownloadAll(List<Track> tracks) {
+    if (tracks.isEmpty) return;
+    showDialog(
+      context: context,
+      builder: (dialogContext) {
+        final colorScheme = Theme.of(dialogContext).colorScheme;
+        return AlertDialog(
+          backgroundColor: colorScheme.surfaceContainerHigh,
+          title: const Text('Download All'),
+          content: Text('Download ${tracks.length} tracks?'),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(dialogContext),
+              child: Text(context.l10n.dialogCancel),
+            ),
+            FilledButton(
+              onPressed: () {
+                Navigator.pop(dialogContext);
+                _downloadAll(tracks);
+              },
+              child: const Text('Download'),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  void _downloadAll(List<Track> tracks) {
+    if (tracks.isEmpty) return;
+    final settings = ref.read(settingsProvider);
+    if (settings.askQualityBeforeDownload) {
+      DownloadServicePicker.show(
+        context,
+        trackName: '${tracks.length} tracks',
+        artistName: switch (widget.mode) {
+          LibraryTracksFolderMode.wishlist => context.l10n.collectionWishlist,
+          LibraryTracksFolderMode.loved => context.l10n.collectionLoved,
+          LibraryTracksFolderMode.playlist => context.l10n.collectionPlaylist,
+        },
+        onSelect: (quality, service) {
+          ref
+              .read(downloadQueueProvider.notifier)
+              .addMultipleToQueue(tracks, service, qualityOverride: quality);
+          if (!mounted) return;
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(
+                context.l10n.snackbarAddedTracksToQueue(tracks.length),
+              ),
+            ),
+          );
+        },
+      );
+    } else {
+      ref
+          .read(downloadQueueProvider.notifier)
+          .addMultipleToQueue(tracks, settings.defaultService);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(context.l10n.snackbarAddedTracksToQueue(tracks.length)),
+        ),
+      );
+    }
   }
 
   void _showCoverOptionsSheet(BuildContext context, bool hasCustomCover) {
@@ -926,6 +1021,32 @@ class _CollectionTrackTile extends ConsumerWidget {
     final track = entry.track;
     final colorScheme = Theme.of(context).colorScheme;
     final effectiveCoverUrl = _resolveCoverUrl(track);
+    final isInHistory = ref.watch(
+      downloadHistoryProvider.select((state) {
+        if (state.isDownloaded(track.id)) return true;
+        final isrc = track.isrc?.trim();
+        if (isrc != null && isrc.isNotEmpty && state.getByIsrc(isrc) != null) {
+          return true;
+        }
+        return state.findByTrackAndArtist(track.name, track.artistName) != null;
+      }),
+    );
+    final showLocalLibraryIndicator = ref.watch(
+      settingsProvider.select(
+        (s) => s.localLibraryEnabled && s.localLibraryShowDuplicates,
+      ),
+    );
+    final isInLocalLibrary = showLocalLibraryIndicator
+        ? ref.watch(
+            localLibraryProvider.select(
+              (state) => state.existsInLibrary(
+                isrc: track.isrc,
+                trackName: track.name,
+                artistName: track.artistName,
+              ),
+            ),
+          )
+        : false;
 
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 8),
@@ -985,10 +1106,48 @@ class _CollectionTrackTile extends ConsumerWidget {
             ],
           ),
           title: Text(track.name, maxLines: 1, overflow: TextOverflow.ellipsis),
-          subtitle: Text(
-            track.artistName,
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
+          subtitle: Row(
+            children: [
+              Flexible(
+                child: Text(
+                  track.artistName,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ),
+              if (isInLocalLibrary || isInHistory) ...[
+                const SizedBox(width: 6),
+                Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 6,
+                    vertical: 2,
+                  ),
+                  decoration: BoxDecoration(
+                    color: colorScheme.tertiaryContainer,
+                    borderRadius: BorderRadius.circular(4),
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(
+                        Icons.folder_outlined,
+                        size: 10,
+                        color: colorScheme.onTertiaryContainer,
+                      ),
+                      const SizedBox(width: 3),
+                      Text(
+                        context.l10n.libraryInLibrary,
+                        style: TextStyle(
+                          fontSize: 9,
+                          fontWeight: FontWeight.w500,
+                          color: colorScheme.onTertiaryContainer,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ],
           ),
           trailing: isSelectionMode
               ? null
@@ -1003,23 +1162,6 @@ class _CollectionTrackTile extends ConsumerWidget {
           onTap: isSelectionMode
               ? onTap
               : () {
-                  final settings = ref.read(settingsProvider);
-                  final shouldPlayStream =
-                      settings.isStreamingMode &&
-                      (mode == LibraryTracksFolderMode.wishlist ||
-                          mode == LibraryTracksFolderMode.loved);
-
-                  if (shouldPlayStream) {
-                    _playTrackStream(context, ref);
-                    return;
-                  }
-
-                  if (mode == LibraryTracksFolderMode.playlist &&
-                      settings.isStreamingMode) {
-                    _playTrackStreamAndSetQueue(context, ref);
-                    return;
-                  }
-
                   if (mode == LibraryTracksFolderMode.wishlist) {
                     _downloadTrack(context, ref);
                     return;
@@ -1275,37 +1417,6 @@ class _CollectionTrackTile extends ConsumerWidget {
           .addToQueue(track, settings.defaultService);
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text(context.l10n.snackbarAddedToQueue(track.name))),
-      );
-    }
-  }
-
-  Future<void> _playTrackStream(BuildContext context, WidgetRef ref) async {
-    try {
-      await ref.read(playbackProvider.notifier).playTrackStream(entry.track);
-    } catch (_) {
-      if (!context.mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(context.l10n.errorFailedToLoad(entry.track.name)),
-        ),
-      );
-    }
-  }
-
-  Future<void> _playTrackStreamAndSetQueue(
-    BuildContext context,
-    WidgetRef ref,
-  ) async {
-    try {
-      await ref
-          .read(playbackProvider.notifier)
-          .playTrackStreamAndSetQueue(entry.track, folderTracks);
-    } catch (_) {
-      if (!context.mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(context.l10n.errorFailedToLoad(entry.track.name)),
-        ),
       );
     }
   }

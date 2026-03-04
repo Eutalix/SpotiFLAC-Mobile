@@ -3,13 +3,10 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:spotiflac_android/l10n/l10n.dart';
 import 'package:spotiflac_android/models/track.dart';
-import 'package:spotiflac_android/providers/download_queue_provider.dart';
 import 'package:spotiflac_android/providers/library_collections_provider.dart';
-import 'package:spotiflac_android/providers/playback_provider.dart';
-import 'package:spotiflac_android/providers/settings_provider.dart';
 import 'package:spotiflac_android/services/cover_cache_manager.dart';
-import 'package:spotiflac_android/widgets/download_service_picker.dart';
 import 'package:spotiflac_android/widgets/playlist_picker_sheet.dart';
+import 'package:spotiflac_android/utils/clickable_metadata.dart';
 
 class TrackCollectionQuickActions extends ConsumerWidget {
   final Track track;
@@ -59,11 +56,6 @@ class _TrackOptionsSheet extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final colorScheme = Theme.of(context).colorScheme;
-    final settings = ref.watch(settingsProvider);
-    final isStreamingMode = settings.isStreamingMode;
-    final showDownloadAction = isStreamingMode;
-    final rootContext = Navigator.of(context, rootNavigator: true).context;
-    final container = ProviderScope.containerOf(rootContext, listen: false);
 
     final isLoved = ref.watch(
       libraryCollectionsProvider.select((state) => state.isLoved(track)),
@@ -146,8 +138,10 @@ class _TrackOptionsSheet extends ConsumerWidget {
                                 overflow: TextOverflow.ellipsis,
                               ),
                               const SizedBox(height: 2),
-                              Text(
-                                track.artistName,
+                              ClickableArtistName(
+                                artistName: track.artistName,
+                                artistId: track.artistId,
+                                coverUrl: track.coverUrl,
                                 style: Theme.of(context).textTheme.bodyMedium
                                     ?.copyWith(
                                       color: colorScheme.onSurfaceVariant,
@@ -169,84 +163,6 @@ class _TrackOptionsSheet extends ConsumerWidget {
               ),
 
               // Action items (matches _QualityOption style)
-              _OptionTile(
-                icon: showDownloadAction
-                    ? Icons.download_rounded
-                    : Icons.play_arrow_rounded,
-                title: showDownloadAction
-                    ? context.l10n.downloadTitle
-                    : 'Play Stream',
-                onTap: () async {
-                  Navigator.pop(context);
-                  if (!showDownloadAction) {
-                    try {
-                      await container
-                          .read(playbackProvider.notifier)
-                          .playTrackStream(track);
-                    } catch (e) {
-                      if (!rootContext.mounted) {
-                        return;
-                      }
-                      ScaffoldMessenger.of(rootContext).showSnackBar(
-                        SnackBar(content: Text('Cannot play stream: $e')),
-                      );
-                    }
-                    return;
-                  }
-
-                  if (settings.askQualityBeforeDownload) {
-                    DownloadServicePicker.show(
-                      rootContext,
-                      trackName: track.name,
-                      artistName: track.artistName,
-                      coverUrl: track.coverUrl,
-                      onSelect: (quality, service) {
-                        container
-                            .read(downloadQueueProvider.notifier)
-                            .addToQueue(
-                              track,
-                              service,
-                              qualityOverride: quality,
-                            );
-                        ScaffoldMessenger.of(rootContext).showSnackBar(
-                          SnackBar(
-                            content: Text(
-                              rootContext.l10n.snackbarAddedToQueue(track.name),
-                            ),
-                          ),
-                        );
-                      },
-                    );
-                  } else {
-                    container
-                        .read(downloadQueueProvider.notifier)
-                        .addToQueue(track, settings.defaultService);
-                    if (!rootContext.mounted) {
-                      return;
-                    }
-                    ScaffoldMessenger.of(rootContext).showSnackBar(
-                      SnackBar(
-                        content: Text(
-                          rootContext.l10n.snackbarAddedToQueue(track.name),
-                        ),
-                      ),
-                    );
-                  }
-                },
-              ),
-              _OptionTile(
-                icon: Icons.playlist_add_rounded,
-                title: 'Add to Play Queue',
-                onTap: () {
-                  Navigator.pop(context);
-                  ref.read(playbackProvider.notifier).addToQueue(track);
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(
-                      content: Text('Added "${track.name}" to play queue'),
-                    ),
-                  );
-                },
-              ),
               _OptionTile(
                 icon: isLoved ? Icons.favorite : Icons.favorite_border,
                 iconColor: isLoved ? colorScheme.error : null,

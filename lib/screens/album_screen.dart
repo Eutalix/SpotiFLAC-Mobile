@@ -5,19 +5,17 @@ import 'package:spotiflac_android/services/cover_cache_manager.dart';
 import 'package:spotiflac_android/l10n/l10n.dart';
 import 'package:spotiflac_android/models/track.dart';
 import 'package:spotiflac_android/providers/download_queue_provider.dart';
-import 'package:spotiflac_android/providers/playback_provider.dart';
 import 'package:spotiflac_android/providers/settings_provider.dart';
 import 'package:spotiflac_android/providers/recent_access_provider.dart';
 import 'package:spotiflac_android/providers/local_library_provider.dart';
+import 'package:spotiflac_android/providers/playback_provider.dart';
 import 'package:spotiflac_android/services/platform_bridge.dart';
 import 'package:spotiflac_android/utils/file_access.dart';
 import 'package:spotiflac_android/widgets/track_collection_quick_actions.dart';
 import 'package:spotiflac_android/widgets/download_service_picker.dart';
 import 'package:spotiflac_android/providers/library_collections_provider.dart';
 import 'package:spotiflac_android/widgets/playlist_picker_sheet.dart';
-import 'package:spotiflac_android/screens/artist_screen.dart';
-import 'package:spotiflac_android/screens/home_tab.dart'
-    show ExtensionArtistScreen;
+import 'package:spotiflac_android/utils/clickable_metadata.dart';
 
 class _AlbumCache {
   static final Map<String, _CacheEntry> _cache = {};
@@ -188,7 +186,8 @@ class _AlbumScreenState extends ConsumerState<AlbumScreen> {
           .toList();
 
       final albumInfo = metadata['album_info'] as Map<String, dynamic>?;
-      final artistId = albumInfo?['artist_id'] as String?;
+      final artistId = (albumInfo?['artist_id'] ?? albumInfo?['artistId'])
+          ?.toString();
 
       _AlbumCache.set(widget.albumId, tracks);
 
@@ -216,6 +215,9 @@ class _AlbumScreenState extends ConsumerState<AlbumScreen> {
       artistName: data['artists'] as String? ?? '',
       albumName: data['album_name'] as String? ?? '',
       albumArtist: data['album_artist'] as String?,
+      artistId:
+          (data['artist_id'] ?? data['artistId'])?.toString() ?? _artistId,
+      albumId: data['album_id']?.toString() ?? widget.albumId,
       coverUrl: data['images'] as String?,
       isrc: data['isrc'] as String?,
       duration: ((data['duration_ms'] as int? ?? 0) / 1000).round(),
@@ -266,9 +268,6 @@ class _AlbumScreenState extends ConsumerState<AlbumScreen> {
     ColorScheme colorScheme,
     Color pageBackgroundColor,
   ) {
-    final isStreamingMode = ref.watch(
-      settingsProvider.select((s) => s.isStreamingMode),
-    );
     final expandedHeight = _calculateExpandedHeight(context);
     final tracks = _tracks ?? [];
     final artistName = tracks.isNotEmpty ? tracks.first.artistName : null;
@@ -372,19 +371,19 @@ class _AlbumScreenState extends ConsumerState<AlbumScreen> {
                         ),
                         if (artistName != null && artistName.isNotEmpty) ...[
                           const SizedBox(height: 6),
-                          GestureDetector(
-                            onTap: () => _navigateToArtist(context, artistName),
-                            child: Text(
-                              artistName,
-                              style: TextStyle(
-                                color: colorScheme.primary,
-                                fontSize: 16,
-                                fontWeight: FontWeight.w600,
-                              ),
-                              textAlign: TextAlign.center,
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
+                          ClickableArtistName(
+                            artistName: artistName,
+                            artistId: _artistId,
+                            coverUrl: widget.coverUrl,
+                            extensionId: widget.extensionId,
+                            style: TextStyle(
+                              color: colorScheme.primary,
+                              fontSize: 16,
+                              fontWeight: FontWeight.w600,
                             ),
+                            textAlign: TextAlign.center,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
                           ),
                         ],
                         if (tracks.isNotEmpty) ...[
@@ -462,21 +461,10 @@ class _AlbumScreenState extends ConsumerState<AlbumScreen> {
                               _buildLoveAllButton(),
                               const SizedBox(width: 12),
                               FilledButton.icon(
-                                onPressed: () => isStreamingMode
-                                    ? _playAll(context)
-                                    : _downloadAll(context),
-                                icon: Icon(
-                                  isStreamingMode
-                                      ? Icons.play_arrow_rounded
-                                      : Icons.download,
-                                  size: 18,
-                                ),
+                                onPressed: () => _downloadAll(context),
+                                icon: Icon(Icons.download, size: 18),
                                 label: Text(
-                                  isStreamingMode
-                                      ? context.l10n.playAllCount(tracks.length)
-                                      : context.l10n.downloadAllCount(
-                                          tracks.length,
-                                        ),
+                                  context.l10n.downloadAllCount(tracks.length),
                                 ),
                                 style: FilledButton.styleFrom(
                                   backgroundColor: Colors.white,
@@ -542,21 +530,6 @@ class _AlbumScreenState extends ConsumerState<AlbumScreen> {
 
   void _downloadTrack(BuildContext context, Track track) {
     final settings = ref.read(settingsProvider);
-    if (settings.isStreamingMode) {
-      final queue = _tracks ?? [track];
-      final messenger = ScaffoldMessenger.of(this.context);
-      ref
-          .read(playbackProvider.notifier)
-          .playTrackStreamAndSetQueue(track, queue)
-          .catchError((e) {
-            if (!mounted) return;
-            messenger.showSnackBar(
-              SnackBar(content: Text('Cannot play stream: $e')),
-            );
-          });
-      return;
-    }
-
     if (settings.askQualityBeforeDownload) {
       DownloadServicePicker.show(
         context,
@@ -616,22 +589,6 @@ class _AlbumScreenState extends ConsumerState<AlbumScreen> {
         ),
       );
     }
-  }
-
-  void _playAll(BuildContext context) {
-    final tracks = _tracks;
-    if (tracks == null || tracks.isEmpty) return;
-    final firstTrack = tracks.first;
-    final messenger = ScaffoldMessenger.of(this.context);
-    ref
-        .read(playbackProvider.notifier)
-        .playTrackStreamAndSetQueue(firstTrack, tracks)
-        .catchError((e) {
-          if (!mounted) return;
-          messenger.showSnackBar(
-            SnackBar(content: Text('Cannot play stream: $e')),
-          );
-        });
   }
 
   Widget _buildLoveAllButton() {
@@ -722,47 +679,6 @@ class _AlbumScreenState extends ConsumerState<AlbumScreen> {
     }
   }
 
-  void _navigateToArtist(BuildContext context, String artistName) {
-    final artistId =
-        _artistId ??
-        (widget.albumId.startsWith('deezer:') ? 'deezer:unknown' : 'unknown');
-
-    if (artistId == 'unknown' ||
-        artistId == 'deezer:unknown' ||
-        artistId.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Artist information not available')),
-      );
-      return;
-    }
-
-    if (widget.extensionId != null) {
-      Navigator.push(
-        context,
-        MaterialPageRoute(
-          builder: (context) => ExtensionArtistScreen(
-            extensionId: widget.extensionId!,
-            artistId: artistId,
-            artistName: artistName,
-            coverUrl: widget.coverUrl,
-          ),
-        ),
-      );
-      return;
-    }
-
-    Navigator.push(
-      context,
-      MaterialPageRoute(
-        builder: (context) => ArtistScreen(
-          artistId: artistId,
-          artistName: artistName,
-          coverUrl: widget.coverUrl,
-        ),
-      ),
-    );
-  }
-
   Widget _buildErrorWidget(String error, ColorScheme colorScheme) {
     final isRateLimit =
         error.contains('429') ||
@@ -846,7 +762,12 @@ class _AlbumTrackItem extends ConsumerWidget {
 
     final isInHistory = ref.watch(
       downloadHistoryProvider.select((state) {
-        return state.isDownloaded(track.id);
+        if (state.isDownloaded(track.id)) return true;
+        final isrc = track.isrc?.trim();
+        if (isrc != null && isrc.isNotEmpty && state.getByIsrc(isrc) != null) {
+          return true;
+        }
+        return state.findByTrackAndArtist(track.name, track.artistName) != null;
       }),
     );
 
@@ -902,14 +823,16 @@ class _AlbumTrackItem extends ConsumerWidget {
           subtitle: Row(
             children: [
               Flexible(
-                child: Text(
-                  track.artistName,
+                child: ClickableArtistName(
+                  artistName: track.artistName,
+                  artistId: track.artistId,
+                  coverUrl: track.coverUrl,
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                   style: TextStyle(color: colorScheme.onSurfaceVariant),
                 ),
               ),
-              if (isInLocalLibrary) ...[
+              if (isInLocalLibrary || isInHistory) ...[
                 const SizedBox(width: 6),
                 Container(
                   padding: const EdgeInsets.symmetric(
@@ -944,13 +867,7 @@ class _AlbumTrackItem extends ConsumerWidget {
             ],
           ),
           trailing: TrackCollectionQuickActions(track: track),
-          onTap: () => _handleTap(
-            context,
-            ref,
-            isQueued: isQueued,
-            isInHistory: isInHistory,
-            isInLocalLibrary: isInLocalLibrary,
-          ),
+          onTap: () => _handleTap(context, ref, isQueued: isQueued),
           onLongPress: () => TrackCollectionQuickActions.showTrackOptionsSheet(
             context,
             ref,
@@ -965,53 +882,84 @@ class _AlbumTrackItem extends ConsumerWidget {
     BuildContext context,
     WidgetRef ref, {
     required bool isQueued,
-    required bool isInHistory,
-    required bool isInLocalLibrary,
   }) async {
-    final isStreamingMode = ref.read(settingsProvider).isStreamingMode;
-    if (isStreamingMode) {
-      onDownload();
-      return;
-    }
-
     if (isQueued) return;
 
-    if (isInLocalLibrary) {
-      if (context.mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(context.l10n.snackbarAlreadyInLibrary(track.name)),
-          ),
-        );
-      }
+    final playedLocal = await _playLocalIfAvailable(context, ref);
+    if (playedLocal) {
       return;
-    }
-
-    if (isInHistory) {
-      final historyItem = ref
-          .read(downloadHistoryProvider.notifier)
-          .getBySpotifyId(track.id);
-      if (historyItem != null) {
-        final exists = await fileExists(historyItem.filePath);
-        if (exists) {
-          if (context.mounted) {
-            ScaffoldMessenger.of(context).showSnackBar(
-              SnackBar(
-                content: Text(
-                  context.l10n.snackbarAlreadyDownloaded(track.name),
-                ),
-              ),
-            );
-          }
-          return;
-        } else {
-          ref
-              .read(downloadHistoryProvider.notifier)
-              .removeBySpotifyId(track.id);
-        }
-      }
     }
 
     onDownload();
+  }
+
+  Future<bool> _playLocalIfAvailable(
+    BuildContext context,
+    WidgetRef ref,
+  ) async {
+    final localState = ref.read(localLibraryProvider);
+    final historyState = ref.read(downloadHistoryProvider);
+    final historyNotifier = ref.read(downloadHistoryProvider.notifier);
+
+    try {
+      DownloadHistoryItem? historyItem = historyNotifier.getBySpotifyId(
+        track.id,
+      );
+      final isrc = track.isrc?.trim();
+      historyItem ??= (isrc != null && isrc.isNotEmpty)
+          ? historyNotifier.getByIsrc(isrc)
+          : null;
+      historyItem ??= historyState.findByTrackAndArtist(
+        track.name,
+        track.artistName,
+      );
+
+      if (historyItem != null) {
+        final exists = await fileExists(historyItem.filePath);
+        if (exists) {
+          await ref
+              .read(playbackProvider.notifier)
+              .playLocalPath(
+                path: historyItem.filePath,
+                title: track.name,
+                artist: track.artistName,
+                album: track.albumName,
+                coverUrl: track.coverUrl ?? '',
+              );
+          return true;
+        }
+        historyNotifier.removeFromHistory(historyItem.id);
+      }
+
+      var localItem = (isrc != null && isrc.isNotEmpty)
+          ? localState.getByIsrc(isrc)
+          : null;
+      localItem ??= localState.findByTrackAndArtist(
+        track.name,
+        track.artistName,
+      );
+
+      if (localItem != null && await fileExists(localItem.filePath)) {
+        await ref
+            .read(playbackProvider.notifier)
+            .playLocalPath(
+              path: localItem.filePath,
+              title: localItem.trackName,
+              artist: localItem.artistName,
+              album: localItem.albumName,
+              coverUrl: localItem.coverPath ?? track.coverUrl ?? '',
+            );
+        return true;
+      }
+    } catch (e) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(context.l10n.snackbarCannotOpenFile('$e'))),
+        );
+      }
+      return true;
+    }
+
+    return false;
   }
 }

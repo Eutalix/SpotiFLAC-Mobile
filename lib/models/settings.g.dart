@@ -7,7 +7,6 @@ part of 'settings.dart';
 // **************************************************************************
 
 AppSettings _$AppSettingsFromJson(Map<String, dynamic> json) => AppSettings(
-  interactionMode: json['interactionMode'] as String? ?? 'downloader',
   defaultService: json['defaultService'] as String? ?? 'tidal',
   audioQuality: json['audioQuality'] as String? ?? 'LOSSLESS',
   filenameFormat: json['filenameFormat'] as String? ?? '{title} - {artist}',
@@ -15,8 +14,6 @@ AppSettings _$AppSettingsFromJson(Map<String, dynamic> json) => AppSettings(
   storageMode: json['storageMode'] as String? ?? 'app',
   downloadTreeUri: json['downloadTreeUri'] as String? ?? '',
   autoFallback: json['autoFallback'] as bool? ?? true,
-  autoSkipUnavailableTracks: json['autoSkipUnavailableTracks'] as bool? ?? true,
-  smartQueueEnabled: json['smartQueueEnabled'] as bool? ?? true,
   embedMetadata: json['embedMetadata'] as bool? ?? true,
   embedLyrics: json['embedLyrics'] as bool? ?? true,
   maxQualityCover: json['maxQualityCover'] as bool? ?? true,
@@ -65,7 +62,14 @@ AppSettings _$AppSettingsFromJson(Map<String, dynamic> json) => AppSettings(
       (json['lyricsProviders'] as List<dynamic>?)
           ?.map((e) => e as String)
           .toList() ??
-      const ['lrclib', 'musixmatch', 'netease', 'apple_music', 'qqmusic'],
+      const [
+        'lrclib',
+        'spotify_api',
+        'musixmatch',
+        'netease',
+        'apple_music',
+        'qqmusic',
+      ],
   lyricsIncludeTranslationNetease:
       json['lyricsIncludeTranslationNetease'] as bool? ?? false,
   lyricsIncludeRomanizationNetease:
@@ -74,13 +78,11 @@ AppSettings _$AppSettingsFromJson(Map<String, dynamic> json) => AppSettings(
       json['lyricsMultiPersonWordByWord'] as bool? ?? false,
   musixmatchLanguage: json['musixmatchLanguage'] as String? ?? '',
   lastSeenVersion: json['lastSeenVersion'] as String? ?? '',
-  hasSeenWhatsNew: json['hasSeenWhatsNew'] as bool? ?? true,
 );
 
 Map<String, dynamic> _$AppSettingsToJson(
   AppSettings instance,
 ) => <String, dynamic>{
-  'interactionMode': instance.interactionMode,
   'defaultService': instance.defaultService,
   'audioQuality': instance.audioQuality,
   'filenameFormat': instance.filenameFormat,
@@ -88,8 +90,6 @@ Map<String, dynamic> _$AppSettingsToJson(
   'storageMode': instance.storageMode,
   'downloadTreeUri': instance.downloadTreeUri,
   'autoFallback': instance.autoFallback,
-  'autoSkipUnavailableTracks': instance.autoSkipUnavailableTracks,
-  'smartQueueEnabled': instance.smartQueueEnabled,
   'embedMetadata': instance.embedMetadata,
   'embedLyrics': instance.embedLyrics,
   'maxQualityCover': instance.maxQualityCover,
@@ -136,5 +136,4 @@ Map<String, dynamic> _$AppSettingsToJson(
   'lyricsMultiPersonWordByWord': instance.lyricsMultiPersonWordByWord,
   'musixmatchLanguage': instance.musixmatchLanguage,
   'lastSeenVersion': instance.lastSeenVersion,
-  'hasSeenWhatsNew': instance.hasSeenWhatsNew,
 };

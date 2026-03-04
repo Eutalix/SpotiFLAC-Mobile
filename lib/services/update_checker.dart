@@ -1,5 +1,4 @@
 import 'dart:convert';
-import 'dart:io';
 import 'package:http/http.dart' as http;
 import 'package:spotiflac_android/constants/app_info.dart';
 import 'package:spotiflac_android/utils/logger.dart';
@@ -27,36 +26,6 @@ class UpdateInfo {
 class UpdateChecker {
   static const String _latestApiUrl = 'https://api.github.com/repos/${AppInfo.githubRepo}/releases/latest';
   static const String _allReleasesApiUrl = 'https://api.github.com/repos/${AppInfo.githubRepo}/releases';
-
-  static Future<String> _getDeviceArch() async {
-    if (!Platform.isAndroid) return 'unknown';
-    
-    try {
-      final cpuInfo = await File('/proc/cpuinfo').readAsString();
-      
-      if (cpuInfo.contains('AArch64') || cpuInfo.contains('aarch64')) {
-        return 'arm64';
-      }
-      
-      final result = await Process.run('uname', ['-m']);
-      final arch = result.stdout.toString().trim().toLowerCase();
-      
-      if (arch.contains('aarch64') || arch.contains('arm64')) {
-        return 'arm64';
-      } else if (arch.contains('armv7') || arch.contains('arm')) {
-        return 'arm32';
-      } else if (arch.contains('x86_64')) {
-        return 'x86_64';
-      } else if (arch.contains('x86') || arch.contains('i686')) {
-        return 'x86';
-      }
-      
-      return 'arm64';
-    } catch (e) {
-      _log.e('Error detecting arch: $e');
-      return 'arm64';
-    }
-  }
 
   /// Check for updates based on channel preference
   /// [channel] can be 'stable' or 'preview'
@@ -105,15 +74,18 @@ class UpdateChecker {
         return null;
       }
 
+      // Ignore releases from a different major version (e.g. v4.x when we
+      // rolled back to v3.x). Only offer updates within the same major line.
+      if (_majorVersion(latestVersion) != _majorVersion(AppInfo.version)) {
+        _log.i('Skipping update from different major version (current: ${AppInfo.version}, latest: $latestVersion)');
+        return null;
+      }
+
       final body = releaseData['body'] as String? ?? 'No changelog available';
       final htmlUrl = releaseData['html_url'] as String? ?? '${AppInfo.githubUrl}/releases';
       final publishedAt = DateTime.tryParse(releaseData['published_at'] as String? ?? '') ?? DateTime.now();
 
-      final deviceArch = await _getDeviceArch();
-      _log.d('Device architecture: $deviceArch');
-      
       String? arm64Url;
-      String? arm32Url;
       String? universalUrl;
       
       final assets = releaseData['assets'] as List<dynamic>? ?? [];
@@ -128,22 +100,14 @@ class UpdateChecker {
           }
           if (name.contains('arm64') || name.contains('v8a')) {
             arm64Url = downloadUrl;
-          } else if (name.contains('arm32') || name.contains('v7a') || name.contains('armeabi')) {
-            arm32Url = downloadUrl;
           } else if (name.contains('universal')) {
             universalUrl = downloadUrl;
           }
         }
       }
       
-      String? apkUrl;
-      if (deviceArch == 'arm64') {
-        apkUrl = arm64Url ?? universalUrl ?? arm32Url;
-      } else if (deviceArch == 'arm32') {
-        apkUrl = arm32Url ?? universalUrl;
-      } else {
-        apkUrl = universalUrl ?? arm64Url ?? arm32Url;
-      }
+      // Only arm64 is supported; fall back to universal if available
+      final apkUrl = arm64Url ?? universalUrl;
 
       _log.i('Update available: $latestVersion (prerelease: $isPrerelease), APK URL: $apkUrl');
       
@@ -158,6 +122,14 @@ class UpdateChecker {
     } catch (e) {
       _log.e('Error checking for updates: $e');
       return null;
+    }
+  }
+
+  static int _majorVersion(String version) {
+    try {
+      return int.parse(version.split('-').first.split('.').first);
+    } catch (_) {
+      return -1;
     }
   }
 

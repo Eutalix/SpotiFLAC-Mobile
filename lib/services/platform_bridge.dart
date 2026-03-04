@@ -1,7 +1,6 @@
 import 'dart:convert';
 import 'package:flutter/services.dart';
 import 'package:spotiflac_android/services/download_request_payload.dart';
-import 'package:spotiflac_android/services/stream_request_payload.dart';
 import 'package:spotiflac_android/utils/logger.dart';
 
 final _log = AppLogger('PlatformBridge');
@@ -121,17 +120,6 @@ class PlatformBridge {
     return response;
   }
 
-  static Future<Map<String, dynamic>> resolveStreamByStrategy(
-    StreamRequestPayload payload,
-  ) async {
-    final request = jsonEncode(payload.toJson());
-    final result = await _channel.invokeMethod(
-      'resolveStreamByStrategy',
-      request,
-    );
-    return jsonDecode(result as String) as Map<String, dynamic>;
-  }
-
   static Future<Map<String, dynamic>> getDownloadProgress() async {
     final result = await _channel.invokeMethod('getDownloadProgress');
     return jsonDecode(result as String) as Map<String, dynamic>;
@@ -152,6 +140,10 @@ class PlatformBridge {
       }
       return const <String, dynamic>{};
     });
+  }
+
+  static Future<void> exitApp() async {
+    await _channel.invokeMethod('exitApp');
   }
 
   static Future<void> initItemProgress(String itemId) async {
