@@ -9,6 +9,7 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"os"
 	"strconv"
 	"strings"
 	"sync"
@@ -423,7 +424,7 @@ func (y *YouTubeDownloader) DownloadFile(downloadURL, outputPath string, outputF
 
 	// Handle Resume Status
 	var out io.WriteCloser
-	var isResuming bool = false
+	var isResuming bool
 
 	if resp.StatusCode == http.StatusPartialContent {
 		isResuming = true
@@ -462,7 +463,7 @@ func (y *YouTubeDownloader) DownloadFile(downloadURL, outputPath string, outputF
 
 	var written int64
 	if itemID != "" {
-		progressWriter := NewItemProgressWriter(bufWriter, itemID)
+		progressWriter := NewItemProgressWriter(bufWriter, itemID, startByte)
 		written, err = io.Copy(progressWriter, resp.Body)
 	} else {
 		written, err = io.Copy(bufWriter, resp.Body)
@@ -480,9 +481,11 @@ func (y *YouTubeDownloader) DownloadFile(downloadURL, outputPath string, outputF
 		return fmt.Errorf("download interrupted: %w", err)
 	}
 	if flushErr != nil {
+		cleanupOutputOnError(outputPath, outputFD)
 		return fmt.Errorf("failed to flush buffer: %w", flushErr)
 	}
 	if closeErr != nil {
+		cleanupOutputOnError(outputPath, outputFD)
 		return fmt.Errorf("failed to close file: %w", closeErr)
 	}
 

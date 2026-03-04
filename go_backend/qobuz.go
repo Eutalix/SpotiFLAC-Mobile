@@ -1109,8 +1109,6 @@ func (q *QobuzDownloader) DownloadFile(downloadURL, outputPath string, outputFD 
 		return fmt.Errorf("failed to create request: %w", err)
 	}
 
-	req.Header.Set("User-Agent", getRandomUserAgent())
-
 	// Add Range header if we have existing bytes
 	if startByte > 0 {
 		req.Header.Set("Range", fmt.Sprintf("bytes=%d-", startByte))
@@ -1128,7 +1126,7 @@ func (q *QobuzDownloader) DownloadFile(downloadURL, outputPath string, outputFD 
 
 	// Handle Resume Status Codes
 	var out io.WriteCloser
-	var isResuming bool = false
+	var isResuming bool
 
 	if resp.StatusCode == http.StatusPartialContent {
 		// 206 Partial Content: Server supports resume
@@ -1176,7 +1174,7 @@ func (q *QobuzDownloader) DownloadFile(downloadURL, outputPath string, outputFD 
 
 	var written int64
 	if itemID != "" {
-		progressWriter := NewItemProgressWriter(bufWriter, itemID)
+		progressWriter := NewItemProgressWriter(bufWriter, itemID, startByte)
 		written, err = io.Copy(progressWriter, resp.Body)
 	} else {
 		written, err = io.Copy(bufWriter, resp.Body)
@@ -1197,9 +1195,11 @@ func (q *QobuzDownloader) DownloadFile(downloadURL, outputPath string, outputFD 
 	}
 	if flushErr != nil {
 		// Write errors are usually fatal, safer to clean up or retry
+		cleanupOutputOnError(outputPath, outputFD)
 		return fmt.Errorf("failed to flush buffer: %w", flushErr)
 	}
 	if closeErr != nil {
+		cleanupOutputOnError(outputPath, outputFD)
 		return fmt.Errorf("failed to close file: %w", closeErr)
 	}
 

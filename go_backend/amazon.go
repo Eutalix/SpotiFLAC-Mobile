@@ -322,7 +322,7 @@ func (a *AmazonDownloader) DownloadFile(downloadURL, outputPath string, outputFD
 
 	// Handle Resume Status
 	var out io.WriteCloser
-	var isResuming bool = false
+	var isResuming bool
 
 	if resp.StatusCode == http.StatusPartialContent {
 		isResuming = true
@@ -361,7 +361,7 @@ func (a *AmazonDownloader) DownloadFile(downloadURL, outputPath string, outputFD
 
 	var written int64
 	if itemID != "" {
-		pw := NewItemProgressWriter(bufWriter, itemID)
+		pw := NewItemProgressWriter(bufWriter, itemID, startByte)
 		written, err = io.Copy(pw, resp.Body)
 	} else {
 		written, err = io.Copy(bufWriter, resp.Body)
@@ -379,9 +379,11 @@ func (a *AmazonDownloader) DownloadFile(downloadURL, outputPath string, outputFD
 		return fmt.Errorf("download interrupted: %w", err)
 	}
 	if flushErr != nil {
+		cleanupOutputOnError(outputPath, outputFD)
 		return fmt.Errorf("failed to flush buffer: %w", flushErr)
 	}
 	if closeErr != nil {
+		cleanupOutputOnError(outputPath, outputFD)
 		return fmt.Errorf("failed to close file: %w", closeErr)
 	}
 
