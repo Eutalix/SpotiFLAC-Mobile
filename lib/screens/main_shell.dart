@@ -486,10 +486,11 @@ class _MainShellState extends ConsumerState<MainShell> {
       });
     }
 
-    return BackButtonListener(
-      onBackButtonPressed: () async {
+    return PopScope(
+      canPop: false,
+      onPopInvokedWithResult: (didPop, result) async {
+        if (didPop) return;
         _handleBackPress();
-        return true;
       },
       child: Scaffold(
         body: PageView(
